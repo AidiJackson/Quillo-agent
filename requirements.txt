@@ -9,3 +9,4 @@ python-dotenv
 loguru
 tenacity
 pytest
+psycopg2-binary
