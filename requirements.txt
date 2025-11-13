@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic>=2
+pydantic-settings
+SQLAlchemy>=2
+alembic
+httpx
+python-dotenv
+loguru
+tenacity
+pytest
