@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
-import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle } from 'lucide-react';
+import { health, route, RouteResponse } from '@/lib/quilloApi';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  routeResult?: RouteResponse;
 }
 
 interface PlanStep {
@@ -27,6 +29,21 @@ export function ChatScreen() {
   ]);
   const [input, setInput] = useState('');
   const [showPlanTrace, setShowPlanTrace] = useState(true);
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+
+  // Check backend health on mount
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        await health();
+        setBackendStatus('online');
+      } catch (error) {
+        console.error('Backend health check failed:', error);
+        setBackendStatus('offline');
+      }
+    };
+    checkHealth();
+  }, []);
 
   const planSteps: PlanStep[] = [
     {
@@ -49,35 +66,73 @@ export function ChatScreen() {
     },
   ];
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
-    
-    const newMessage: Message = {
+
+    const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
       content: input,
       timestamp: new Date(),
     };
-    
-    setMessages([...messages, newMessage]);
+
+    setMessages([...messages, userMessage]);
+    const userInput = input;
     setInput('');
-    
-    // Simulate AI response
-    setTimeout(() => {
+
+    // Call route API
+    try {
+      const routeResult = await route(userInput, 'demo');
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I\'m processing your request using the optimal model and tools. This is a simulated response for the MVP.',
+        content: `Routed to: **${routeResult.intent}**\n\nThis request has been classified and is ready for processing.`,
         timestamp: new Date(),
+        routeResult,
       };
       setMessages((prev) => [...prev, aiMessage]);
-    }, 1000);
+    } catch (error) {
+      console.error('Route API failed:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Error: Failed to route request. ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    }
   };
 
   return (
     <div className="flex-1 flex gap-6 h-full overflow-hidden">
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Backend Status Badge */}
+        <div className="p-4 flex justify-end">
+          <div className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
+            backendStatus === 'online'
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+              : backendStatus === 'offline'
+              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+              : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+          }`}>
+            {backendStatus === 'online' ? (
+              <>
+                <CheckCircle className="w-3 h-3" />
+                Backend: OK
+              </>
+            ) : backendStatus === 'offline' ? (
+              <>
+                <XCircle className="w-3 h-3" />
+                Backend: Offline
+              </>
+            ) : (
+              <>Checking...</>
+            )}
+          </div>
+        </div>
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.map((message) => (
@@ -85,17 +140,45 @@ export function ChatScreen() {
               key={message.id}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div
-                className={`max-w-[80%] ${
-                  message.role === 'user'
-                    ? 'bg-gradient-to-br from-primary to-secondary text-white'
-                    : 'bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-border'
-                } rounded-[20px] px-5 py-3 shadow-lg`}
-              >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-white/70' : 'text-muted-foreground'}`}>
-                  {message.timestamp.toLocaleTimeString()}
-                </p>
+              <div className={`max-w-[80%] space-y-2`}>
+                <div
+                  className={`${
+                    message.role === 'user'
+                      ? 'bg-gradient-to-br from-primary to-secondary text-white'
+                      : 'bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-border'
+                  } rounded-[20px] px-5 py-3 shadow-lg`}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-white/70' : 'text-muted-foreground'}`}>
+                    {message.timestamp.toLocaleTimeString()}
+                  </p>
+                </div>
+
+                {/* Route Result Card */}
+                {message.routeResult && (
+                  <div className="bg-accent/50 dark:bg-slate-700/50 rounded-[16px] px-4 py-3 border border-border/50 text-xs space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-primary" />
+                      <span className="font-semibold">Route Result</span>
+                    </div>
+                    <div className="space-y-1">
+                      <p><span className="font-medium">Intent:</span> {message.routeResult.intent}</p>
+                      {message.routeResult.slots && Object.keys(message.routeResult.slots).length > 0 && (
+                        <p><span className="font-medium">Slots:</span> {JSON.stringify(message.routeResult.slots)}</p>
+                      )}
+                      {message.routeResult.reasons && message.routeResult.reasons.length > 0 && (
+                        <div>
+                          <p className="font-medium">Reasons:</p>
+                          <ul className="list-disc list-inside pl-2 text-muted-foreground">
+                            {message.routeResult.reasons.map((reason, idx) => (
+                              <li key={idx}>{reason}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}
