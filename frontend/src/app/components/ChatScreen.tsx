@@ -30,6 +30,7 @@ export function ChatScreen() {
   const [lastUserMessage, setLastUserMessage] = useState<{ text: string; routeResult?: RouteResponse } | null>(null);
   const [askLoading, setAskLoading] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'ask' | 'orchestrate'>('ask');
 
   // Check backend health on mount
   useEffect(() => {
@@ -255,32 +256,69 @@ export function ChatScreen() {
               </button>
             </div>
 
+            {/* Mode Switch */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="inline-flex bg-accent/30 rounded-[12px] p-1">
+                  <button
+                    onClick={() => setMode('ask')}
+                    className={`px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
+                      mode === 'ask'
+                        ? 'bg-white dark:bg-slate-800 text-primary shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Ask
+                  </button>
+                  <button
+                    onClick={() => setMode('orchestrate')}
+                    className={`px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
+                      mode === 'orchestrate'
+                        ? 'bg-white dark:bg-slate-800 text-primary shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Orchestrate
+                  </button>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {mode === 'ask' ? 'Get direct entrepreneur advice.' : 'Route and plan tool steps.'}
+                </span>
+              </div>
+            </div>
+
             {/* Action Buttons */}
             <div className="flex gap-2 flex-wrap">
-              <button className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                Route
-              </button>
-              <button
-                onClick={handlePlan}
-                disabled={!lastUserMessage?.routeResult || planLoading}
-                className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Brain className="w-4 h-4" />
-                {planLoading ? 'Planning...' : 'Plan'}
-              </button>
-              <button
-                onClick={handleAsk}
-                disabled={!input.trim() || askLoading}
-                className="px-4 py-2 bg-primary/20 text-primary rounded-[12px] hover:bg-primary/30 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Sparkles className="w-4 h-4" />
-                {askLoading ? 'Asking...' : 'Ask Quillopreneur'}
-              </button>
-              <button className="px-4 py-2 bg-secondary/20 text-secondary rounded-[12px] hover:bg-secondary/30 transition-all text-sm flex items-center gap-2">
-                <Play className="w-4 h-4" />
-                Run Plan
-              </button>
+              {mode === 'orchestrate' && (
+                <>
+                  <button className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    Route
+                  </button>
+                  <button
+                    onClick={handlePlan}
+                    disabled={!lastUserMessage?.routeResult || planLoading}
+                    className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Brain className="w-4 h-4" />
+                    {planLoading ? 'Planning...' : 'Plan'}
+                  </button>
+                  <button className="px-4 py-2 bg-secondary/20 text-secondary rounded-[12px] hover:bg-secondary/30 transition-all text-sm flex items-center gap-2">
+                    <Play className="w-4 h-4" />
+                    Run Plan
+                  </button>
+                </>
+              )}
+              {mode === 'ask' && (
+                <button
+                  onClick={handleAsk}
+                  disabled={!input.trim() || askLoading}
+                  className="px-4 py-2 bg-primary/20 text-primary rounded-[12px] hover:bg-primary/30 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {askLoading ? 'Asking...' : 'Ask Quillopreneur'}
+                </button>
+              )}
               <div className="ml-auto flex gap-2">
                 <button className="px-3 py-2 bg-green-100 text-green-700 rounded-[12px] hover:bg-green-200 transition-all">
                   <ThumbsUp className="w-4 h-4" />
