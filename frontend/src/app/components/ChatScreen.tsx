@@ -55,6 +55,7 @@ export function ChatScreen() {
   const [askLoading, setAskLoading] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
   const [mode, setMode] = useState<'ask' | 'orchestrate'>('ask');
+  const [showComingSoonModal, setShowComingSoonModal] = useState(false);
 
   // Check backend health on mount
   useEffect(() => {
@@ -327,7 +328,10 @@ export function ChatScreen() {
                     <Brain className="w-4 h-4" />
                     {planLoading ? 'Planning...' : 'Plan'}
                   </button>
-                  <button className="px-4 py-2 bg-secondary/20 text-secondary rounded-[12px] hover:bg-secondary/30 transition-all text-sm flex items-center gap-2">
+                  <button
+                    onClick={() => setShowComingSoonModal(true)}
+                    className="px-4 py-2 bg-secondary/20 text-secondary rounded-[12px] hover:bg-secondary/30 transition-all text-sm flex items-center gap-2"
+                  >
                     <Play className="w-4 h-4" />
                     Run Plan
                   </button>
@@ -411,6 +415,27 @@ export function ChatScreen() {
             </div>
           )}
         </GlassCard>
+      )}
+
+      {/* Coming Soon Modal */}
+      {showComingSoonModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-[20px] p-6 max-w-md w-full shadow-2xl border border-border">
+            <h3 className="text-xl font-semibold mb-3 text-foreground">
+              Execution Coming Soon
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+              Quillo will soon be able to automatically run multi-step plans using your QuillConnect tools.
+              For now, review the plan and run each step manually.
+            </p>
+            <button
+              onClick={() => setShowComingSoonModal(false)}
+              className="w-full px-4 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-[16px] hover:shadow-lg transition-all font-medium"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
