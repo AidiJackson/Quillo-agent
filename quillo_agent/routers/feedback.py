@@ -7,6 +7,7 @@ from loguru import logger
 from ..db import get_db
 from ..schemas import FeedbackIn, FeedbackOut
 from ..services import memory as memory_service
+from ..auth import verify_api_key
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
@@ -14,7 +15,8 @@ router = APIRouter(prefix="/feedback", tags=["feedback"])
 @router.post("", response_model=FeedbackOut)
 async def record_feedback(
     request: FeedbackIn,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    api_key: str = Depends(verify_api_key)
 ) -> FeedbackOut:
     """
     Record feedback event and update user profile.

@@ -58,6 +58,29 @@ Server will be available at `http://localhost:8000`
 
 ---
 
+## 🔐 Authentication
+
+All API endpoints (except `/health`) require authentication using an API key.
+
+### Setting Up Your API Key
+
+1. Generate a secure API key (recommended: use a password manager or `openssl rand -hex 32`)
+2. Add it to your `.env` file:
+   ```bash
+   QUILLO_API_KEY=your-secret-api-key-here
+   ```
+3. Include the API key in the `Authorization` header for all requests:
+   ```
+   Authorization: Bearer your-secret-api-key-here
+   ```
+
+### Unauthenticated Access
+
+- ❌ Requests without the `Authorization` header will receive a `401 Unauthorized` response
+- ✅ The `/health` endpoint does not require authentication
+
+---
+
 ## 🧪 Sample API Calls
 
 ### 1. Health Check
@@ -76,6 +99,7 @@ curl http://localhost:8000/health
 ```bash
 curl -X POST http://localhost:8000/route \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-secret-api-key-here" \
   -d '{
     "text": "Handle this client email and defuse conflict",
     "user_id": "demo-user-123"
@@ -102,6 +126,7 @@ curl -X POST http://localhost:8000/route \
 ```bash
 curl -X POST http://localhost:8000/plan \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-secret-api-key-here" \
   -d '{
     "intent": "response",
     "user_id": "demo-user-123",

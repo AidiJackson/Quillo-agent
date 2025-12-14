@@ -7,6 +7,7 @@ from loguru import logger
 from ..db import get_db
 from ..schemas import ProfileIn, ProfileOut
 from ..services import memory as memory_service
+from ..auth import verify_api_key
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -14,7 +15,8 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 @router.get("/profile", response_model=ProfileOut)
 async def get_profile(
     user_id: str = Query(..., description="User identifier"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    api_key: str = Depends(verify_api_key)
 ) -> ProfileOut:
     """
     Get user profile (auto-initializes if missing).
@@ -40,7 +42,8 @@ async def get_profile(
 @router.post("/profile", response_model=ProfileOut)
 async def update_profile(
     request: ProfileIn,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    api_key: str = Depends(verify_api_key)
 ) -> ProfileOut:
     """
     Update user profile markdown.

@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure appropriately for production
+        allow_origins=settings.cors_origins_list,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -62,8 +62,7 @@ def create_app() -> FastAPI:
         start_time = time.time()
 
         logger.info(
-            f"[{request_id}] {request.method} {request.url.path} "
-            f"from {request.client.host if request.client else 'unknown'}"
+            f"[{request_id}] {request.method} {request.url.path}"
         )
 
         response = await call_next(request)

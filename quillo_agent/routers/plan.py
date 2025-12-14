@@ -1,16 +1,20 @@
 """
 Plan generation endpoint
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from loguru import logger
 from ..schemas import PlanRequest, PlanResponse
 from ..services import quillo
+from ..auth import verify_api_key
 
 router = APIRouter(prefix="/plan", tags=["planning"])
 
 
 @router.post("", response_model=PlanResponse)
-async def generate_plan(request: PlanRequest) -> PlanResponse:
+async def generate_plan(
+    request: PlanRequest,
+    api_key: str = Depends(verify_api_key)
+) -> PlanResponse:
     """
     Generate execution plan for given intent.
 

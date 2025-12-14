@@ -20,6 +20,21 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     model_routing: str = "fast"  # fast|balanced|premium
 
+    # Security settings
+    quillo_api_key: str = ""
+    cors_allowed_origins: str = ""
+
+    @property
+    def cors_origins_list(self) -> list:
+        """Parse CORS origins from comma-separated string"""
+        if self.cors_allowed_origins:
+            return [origin.strip() for origin in self.cors_allowed_origins.split(",")]
+        # Default based on environment
+        if self.app_env == "dev":
+            return ["http://localhost:3000", "http://localhost:8000"]
+        else:
+            return ["https://app.quillography.ai"]
+
 
 @lru_cache()
 def get_settings() -> Settings:
