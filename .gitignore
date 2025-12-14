@@ -210,3 +210,8 @@ __marimo__/
 *.db
 *.db-journal
 logs/
+
+# Frontend (Node.js)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/

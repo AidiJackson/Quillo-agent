@@ -1,22 +1,28 @@
 # Quillo Agent - Replit Project
 
 ## Overview
-Quillo Agent is an AI Chief of Staff orchestrator MVP built with FastAPI. It provides intelligent routing, planning, and execution of high-stakes communication workflows with context awareness and continuous learning.
+Quillo Agent is an AI Chief of Staff orchestrator MVP with a React frontend and FastAPI backend. It provides intelligent routing, planning, and execution of high-stakes communication workflows with context awareness and continuous learning.
 
 ## Current State
 - **Status**: ✅ Running in Replit environment
-- **Framework**: FastAPI (Python 3.11)
+- **Frontend**: React + Vite + TypeScript (port 5000)
+- **Backend**: FastAPI (Python 3.11, port 8000)
 - **Database**: PostgreSQL (Replit-managed)
-- **Port**: 5000
-- **Last Updated**: November 13, 2025
+- **Last Updated**: December 14, 2025
 
 ## Project Architecture
 
-### Core Components
+### Frontend (`/frontend`)
+- **Framework**: React 18 + Vite + TypeScript
+- **Styling**: Tailwind CSS 4 + shadcn/ui components
+- **Screens**: Chat, Workflows, Profile, Settings, Audit Log, Integrations
+- **Port**: 5000 (Replit webview)
+
+### Backend Core Components
 1. **FastAPI Application** (`app.py`, `quillo_agent/main.py`)
    - RESTful API server with CORS support
    - Request logging middleware
-   - Automatic API documentation (Swagger UI at `/docs`)
+   - Automatic API documentation (Swagger UI at `localhost:8000/docs`)
 
 2. **Routers** (`quillo_agent/routers/`)
    - `/health` - Health check endpoint
@@ -65,29 +71,37 @@ Note: The app works without API keys using rule-based classification.
 
 ## Running the Project
 
+### Replit Environment (Two Workflows)
+Both frontend and backend run automatically:
+
+**Frontend** (port 5000 - webview):
+```bash
+cd frontend && npm run dev
+```
+
+**Backend** (port 8000 - internal):
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8000
+# or: make run
+```
+
+### Access Points
+- **Frontend UI**: Opens automatically in Replit webview (port 5000)
+- **Backend API Docs**: `http://localhost:8000/docs` (internal only)
+- **Health Check**: `GET http://localhost:8000/health`
+
 ### Local Development (Outside Replit)
 ```bash
-# Install dependencies
+# Backend
 pip install -r requirements.txt
-
-# Run migrations
 alembic upgrade head
+make run  # Runs on port 8000
 
-# Start server
-make run
+# Frontend (separate terminal)
+cd frontend
+npm install
+npm run dev  # Runs on port 5000
 ```
-
-### Replit Environment
-The workflow is configured to automatically run:
-```bash
-uvicorn app:app --host 0.0.0.0 --port 5000
-```
-
-Access the API:
-- **Web Preview**: Opens automatically in Replit
-- **Swagger UI**: `/docs`
-- **ReDoc**: `/redoc`
-- **Health Check**: `GET /health`
 
 ## API Usage Examples
 
@@ -128,6 +142,14 @@ alembic revision --autogenerate -m "description"
 - Tables: user_profiles, feedback_logs
 
 ## Recent Changes
+- **2025-12-14**: Added React frontend UI
+  - Imported Quillo AI Web App UI (React + Vite + TypeScript)
+  - Configured dual workflows: frontend (5000) + backend (8000)
+  - Added react/react-dom as dependencies
+  - Configured Vite for Replit proxy compatibility
+  - Frontend screens: Chat, Workflows, Profile, Settings, Audit Log, Integrations
+  - API wiring not yet implemented
+
 - **2025-11-13**: Initial Replit setup
   - Installed Python 3.11 and dependencies
   - Added psycopg2-binary for PostgreSQL support
