@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle } from 'lucide-react';
-import { health, route, RouteResponse } from '@/lib/quilloApi';
+import { health, route, plan, RouteResponse, PlanResponse } from '@/lib/quilloApi';
 
 interface Message {
   id: string;
@@ -9,13 +9,6 @@ interface Message {
   content: string;
   timestamp: Date;
   routeResult?: RouteResponse;
-}
-
-interface PlanStep {
-  step: string;
-  tool: string;
-  model: string;
-  rationale: string;
 }
 
 export function ChatScreen() {
@@ -30,6 +23,10 @@ export function ChatScreen() {
   const [input, setInput] = useState('');
   const [showPlanTrace, setShowPlanTrace] = useState(true);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [planResult, setPlanResult] = useState<PlanResponse | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [lastUserMessage, setLastUserMessage] = useState<{ text: string; routeResult?: RouteResponse } | null>(null);
 
   // Check backend health on mount
   useEffect(() => {
@@ -44,27 +41,6 @@ export function ChatScreen() {
     };
     checkHealth();
   }, []);
-
-  const planSteps: PlanStep[] = [
-    {
-      step: '1. Analyze Request',
-      tool: 'Intent Classifier',
-      model: 'Fast (GPT-4o-mini)',
-      rationale: 'Quick intent detection for routing',
-    },
-    {
-      step: '2. Research Context',
-      tool: 'Web Search',
-      model: 'Balanced (GPT-4o)',
-      rationale: 'Gather comprehensive information',
-    },
-    {
-      step: '3. Draft Response',
-      tool: 'Text Generator',
-      model: 'Premium (o3-mini)',
-      rationale: 'High-quality output required',
-    },
-  ];
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -84,6 +60,9 @@ export function ChatScreen() {
     try {
       const routeResult = await route(userInput, 'demo');
 
+      // Store last user message for plan button
+      setLastUserMessage({ text: userInput, routeResult });
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -101,6 +80,31 @@ export function ChatScreen() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
+    }
+  };
+
+  const handlePlan = async () => {
+    if (!lastUserMessage?.routeResult) {
+      setPlanError('Please send a message first to get a route result');
+      return;
+    }
+
+    setPlanLoading(true);
+    setPlanError(null);
+
+    try {
+      const result = await plan(
+        lastUserMessage.routeResult.intent,
+        lastUserMessage.text,
+        lastUserMessage.routeResult.slots,
+        'demo'
+      );
+      setPlanResult(result);
+    } catch (error) {
+      console.error('Plan API failed:', error);
+      setPlanError(error instanceof Error ? error.message : 'Failed to generate plan');
+    } finally {
+      setPlanLoading(false);
     }
   };
 
@@ -211,9 +215,13 @@ export function ChatScreen() {
                 <Sparkles className="w-4 h-4" />
                 Route
               </button>
-              <button className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm flex items-center gap-2">
+              <button
+                onClick={handlePlan}
+                disabled={!lastUserMessage?.routeResult || planLoading}
+                className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Brain className="w-4 h-4" />
-                Plan
+                {planLoading ? 'Planning...' : 'Plan'}
               </button>
               <button className="px-4 py-2 bg-secondary/20 text-secondary rounded-[12px] hover:bg-secondary/30 transition-all text-sm flex items-center gap-2">
                 <Play className="w-4 h-4" />
@@ -239,27 +247,46 @@ export function ChatScreen() {
             <Brain className="w-5 h-5 text-primary" />
             Plan Trace
           </h3>
-          
-          <div className="space-y-3">
-            {planSteps.map((step, index) => (
-              <div
-                key={index}
-                className="p-4 bg-accent/50 rounded-[16px] border border-border/50"
-              >
-                <p className="font-medium text-sm mb-2">{step.step}</p>
-                <div className="space-y-1 text-xs text-muted-foreground">
-                  <p><span className="font-medium">Tool:</span> {step.tool}</p>
-                  <p><span className="font-medium">Model:</span> {step.model}</p>
-                  <p className="text-xs mt-2 italic">{step.rationale}</p>
-                </div>
-              </div>
-            ))}
-          </div>
 
-          <div className="mt-4 p-3 bg-secondary/10 rounded-[12px] text-xs">
-            <p className="font-medium text-secondary mb-1">Cost Estimate</p>
-            <p className="text-muted-foreground">~$0.0023 per request</p>
-          </div>
+          {planError && (
+            <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-[12px] text-xs">
+              {planError}
+            </div>
+          )}
+
+          {planResult ? (
+            <>
+              <div className="space-y-3">
+                {planResult.steps.map((step, index) => (
+                  <div
+                    key={index}
+                    className="p-4 bg-accent/50 rounded-[16px] border border-border/50"
+                  >
+                    <p className="font-medium text-sm mb-2">
+                      {index + 1}. {step.tool}
+                      {step.premium && (
+                        <span className="ml-2 px-2 py-0.5 bg-secondary/20 text-secondary rounded text-xs">
+                          Premium
+                        </span>
+                      )}
+                    </p>
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <p className="italic">{step.rationale}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 p-3 bg-secondary/10 rounded-[12px] text-xs">
+                <p className="font-medium text-secondary mb-1">Trace ID</p>
+                <p className="text-muted-foreground font-mono break-all">{planResult.trace_id}</p>
+              </div>
+            </>
+          ) : (
+            <div className="text-center text-muted-foreground text-sm py-8">
+              Click "Plan" to generate an execution plan
+            </div>
+          )}
         </GlassCard>
       )}
     </div>
