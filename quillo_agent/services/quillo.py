@@ -8,6 +8,7 @@ from ..schemas import RouteResponse, PlanResponse, PlanStep
 from ..utils.classifier import classify
 from ..utils.explain import build_rationale
 from .llm import LLMRouter
+from ..config import settings
 
 
 llm_router = LLMRouter()
@@ -24,7 +25,9 @@ async def route(text: str, user_id: Optional[str] = None) -> RouteResponse:
     Returns:
         RouteResponse with intent, reasons, and slots
     """
-    logger.info(f"Routing request (user={user_id}): {text[:50]}...")
+    logger.info(f"Routing request for user={user_id}")
+    if settings.app_env == "dev":
+        logger.debug(f"Input preview: {text[:30]}...")
 
     # Try rule-based classification first
     result = classify(text)
