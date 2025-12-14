@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle } from 'lucide-react';
-import { health, route, plan, RouteResponse, PlanResponse } from '@/lib/quilloApi';
+import { health, route, plan, ask, RouteResponse, PlanResponse, AskResponse } from '@/lib/quilloApi';
 
 interface Message {
   id: string;
@@ -9,6 +9,7 @@ interface Message {
   content: string;
   timestamp: Date;
   routeResult?: RouteResponse;
+  askResult?: AskResponse;
 }
 
 export function ChatScreen() {
@@ -27,6 +28,8 @@ export function ChatScreen() {
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const [lastUserMessage, setLastUserMessage] = useState<{ text: string; routeResult?: RouteResponse } | null>(null);
+  const [askLoading, setAskLoading] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
 
   // Check backend health on mount
   useEffect(() => {
@@ -108,6 +111,41 @@ export function ChatScreen() {
     }
   };
 
+  const handleAsk = async () => {
+    if (!input.trim()) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+      timestamp: new Date(),
+    };
+
+    setMessages([...messages, userMessage]);
+    const userInput = input;
+    setInput('');
+    setAskLoading(true);
+    setAskError(null);
+
+    try {
+      const askResult = await ask(userInput, 'demo');
+
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: askResult.answer,
+        timestamp: new Date(),
+        askResult,
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Ask API failed:', error);
+      setAskError(error instanceof Error ? error.message : 'Failed to get answer');
+    } finally {
+      setAskLoading(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex gap-6 h-full overflow-hidden">
       {/* Main Chat Area */}
@@ -183,6 +221,14 @@ export function ChatScreen() {
                     </div>
                   </div>
                 )}
+
+                {/* Ask Result Metadata */}
+                {message.askResult && (
+                  <div className="text-xs text-muted-foreground space-y-0.5">
+                    <p>Model: {message.askResult.model}</p>
+                    <p>Trace: {message.askResult.trace_id}</p>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -223,6 +269,14 @@ export function ChatScreen() {
                 <Brain className="w-4 h-4" />
                 {planLoading ? 'Planning...' : 'Plan'}
               </button>
+              <button
+                onClick={handleAsk}
+                disabled={!input.trim() || askLoading}
+                className="px-4 py-2 bg-primary/20 text-primary rounded-[12px] hover:bg-primary/30 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Sparkles className="w-4 h-4" />
+                {askLoading ? 'Asking...' : 'Ask Quillopreneur'}
+              </button>
               <button className="px-4 py-2 bg-secondary/20 text-secondary rounded-[12px] hover:bg-secondary/30 transition-all text-sm flex items-center gap-2">
                 <Play className="w-4 h-4" />
                 Run Plan
@@ -236,6 +290,13 @@ export function ChatScreen() {
                 </button>
               </div>
             </div>
+
+            {/* Ask Error Display */}
+            {askError && (
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-[12px] text-xs">
+                {askError}
+              </div>
+            )}
           </div>
         </div>
       </div>

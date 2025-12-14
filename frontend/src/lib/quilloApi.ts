@@ -42,6 +42,17 @@ export interface PlanResponse {
   trace_id: string;
 }
 
+export interface AskRequest {
+  text: string;
+  user_id?: string;
+}
+
+export interface AskResponse {
+  answer: string;
+  model: string;
+  trace_id: string;
+}
+
 /**
  * Check backend health status
  */
@@ -109,6 +120,35 @@ export async function plan(
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Plan failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Ask Quillopreneur for business advice
+ *
+ * TODO: Production should use a backend session/token or server-side proxy
+ * instead of embedding the API key in the frontend.
+ */
+export async function ask(text: string, userId?: string): Promise<AskResponse> {
+  const request: AskRequest = {
+    text,
+    user_id: userId,
+  };
+
+  const response = await fetch(`${API_BASE}/ask`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`,
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Ask failed: ${response.status} - ${error}`);
   }
 
   return response.json();
