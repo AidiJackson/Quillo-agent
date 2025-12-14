@@ -12,6 +12,30 @@ interface Message {
   askResult?: AskResponse;
 }
 
+/**
+ * Map backend tool IDs to user-friendly QuillConnect Suite names
+ */
+function displayToolName(toolId: string): string {
+  const toolMap: Record<string, string> = {
+    'response_generator': 'Response',
+    'tone_adjuster': 'Rewrite',
+    'conflict_resolver': 'Argument',
+    'clarity_summarizer': 'Clarity',
+    'summarizer': 'Clarity',
+  };
+
+  // Return mapped name if exists
+  if (toolMap[toolId]) {
+    return toolMap[toolId];
+  }
+
+  // Fallback: convert snake_case to Title Case
+  return toolId
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 export function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -362,7 +386,7 @@ export function ChatScreen() {
                     className="p-4 bg-accent/50 rounded-[16px] border border-border/50"
                   >
                     <p className="font-medium text-sm mb-2">
-                      {index + 1}. {step.tool}
+                      {index + 1}. {displayToolName(step.tool)}
                       {step.premium && (
                         <span className="ml-2 px-2 py-0.5 bg-secondary/20 text-secondary rounded text-xs">
                           Premium
