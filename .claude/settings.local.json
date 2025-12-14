@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(cat:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(__NEW_LINE__ echo -e \"\\n---\\n\")",
+      "Bash(__NEW_LINE__ echo \"Testing /route with valid authentication (should work):\")",
+      "Bash(echo 'Checking recent log files for PII...' ls -t logs/*.log)",
+      "Bash(pkill:*)",
+      "Bash(echo -e '\\n\\n=== Checking logs (should NOT contain IPs or user text) ===' sleep 1 cat logs/*.log)",
+      "Bash(find:*)",
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(grep:*)",
+      "Bash(if [ -f .env ])",
+      "Bash(then echo \"✅ .env file exists\")",
+      "Bash(else echo \"❌ .env file missing, copying from .env.example...\")",
+      "Bash(fi)",
+      "Bash(if grep -q \"^QUILLO_API_KEY=\" .env)",
+      "Bash(then sed -i 's/^QUILLO_API_KEY=.*/QUILLO_API_KEY=dev-test-key-12345/' .env)",
+      "Bash(else echo \"QUILLO_API_KEY=dev-test-key-12345\")"
+    ]
+  }
+}
