@@ -64,3 +64,16 @@ class FeedbackIn(BaseModel):
 class FeedbackOut(BaseModel):
     """Output for feedback confirmation"""
     ok: bool = True
+
+
+class AskRequest(BaseModel):
+    """Request for Quillopreneur business advice"""
+    text: str = Field(..., description="Business question or topic")
+    user_id: Optional[str] = Field(None, description="User identifier for personalization")
+
+
+class AskResponse(BaseModel):
+    """Response from Quillopreneur advisor"""
+    answer: str = Field(..., description="Business advice response")
+    model: str = Field(..., description="Model used for response (e.g., 'claude-3-5-sonnet' or 'offline')")
+    trace_id: str = Field(..., description="Trace identifier for debugging")

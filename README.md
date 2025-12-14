@@ -51,6 +51,7 @@ Server will be available at `http://localhost:8000`
 | `/memory/profile` | GET | Retrieve user profile (auto-initializes) |
 | `/memory/profile` | POST | Update user profile |
 | `/feedback` | POST | Record feedback (✅/❌) and update profile |
+| `/ask` | POST | Get business advice from Quillopreneur specialist |
 
 ### API Documentation
 - **Swagger UI**: `http://localhost:8000/docs`
@@ -161,7 +162,34 @@ curl -X POST http://localhost:8000/plan \
 
 ---
 
-### 4. Get User Profile
+### 4. Ask Quillopreneur for Business Advice
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-secret-api-key-here" \
+  -d '{
+    "text": "How should I price my SaaS product?",
+    "user_id": "demo-user-123"
+  }'
+```
+
+**Response:**
+```json
+{
+  "answer": "When pricing a SaaS product, consider these key factors:\n\n1. **Value-based pricing**: Base your price on the value you deliver to customers, not just your costs...",
+  "model": "claude-3-5-sonnet-20241022",
+  "trace_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Notes:**
+- The `user_id` is optional. If provided, user profile context will be included for personalized advice.
+- If no API keys are configured, returns offline template response with `model: "offline"`.
+- Model selection respects `MODEL_ROUTING` setting (fast/balanced/premium).
+
+---
+
+### 5. Get User Profile
 ```bash
 curl "http://localhost:8000/memory/profile?user_id=demo-user-123"
 ```

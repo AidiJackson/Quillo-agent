@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from .config import settings
-from .routers import health, route, plan, memory, feedback
+from .routers import health, route, plan, memory, feedback, ask
 
 
 # Configure loguru
@@ -81,5 +81,6 @@ def create_app() -> FastAPI:
     app.include_router(plan.router)
     app.include_router(memory.router)
     app.include_router(feedback.router)
+    app.include_router(ask.router)
 
     return app
