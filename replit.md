@@ -67,7 +67,16 @@ The application uses the following environment variables (configured via Replit 
 - `ANTHROPIC_API_KEY` - Optional for LLM features
 - `MODEL_ROUTING` - Model tier (fast/balanced/premium)
 
-Note: The app works without API keys using rule-based classification.
+#### UI Authentication Token Pairing
+For frontend-backend authentication via the BFF proxy layer:
+- `QUILLO_UI_TOKEN` - Backend secret for validating UI requests
+- `VITE_UI_TOKEN` - Frontend token (must match backend token exactly)
+
+**Dev Mode Bypass**: When `APP_ENV=dev` and `QUILLO_UI_TOKEN` is not set, authentication is bypassed for easier development.
+
+**Production Setup**: Both tokens must be set and match for authentication to work.
+
+Note: The app works without LLM API keys using rule-based classification (Offline Mode).
 
 ## Running the Project
 
@@ -142,6 +151,15 @@ alembic revision --autogenerate -m "description"
 - Tables: user_profiles, feedback_logs
 
 ## Recent Changes
+- **2025-12-17**: UI Authentication and Auth Status Display
+  - Added `/ui/api/auth/status` endpoint for debugging auth configuration
+  - Implemented constant-time token comparison for security
+  - Added auth status badge in UI showing: "Dev Bypass", "Auth: OK", or "Auth: Missing"
+  - Fixed Vite proxy configuration for `/ui/api/*` requests
+  - Dev bypass only works when `APP_ENV=dev` AND `QUILLO_UI_TOKEN` is not set
+  - Added 20 comprehensive tests for all auth scenarios
+  - Token pairing: `QUILLO_UI_TOKEN` (backend) and `VITE_UI_TOKEN` (frontend) must match
+
 - **2025-12-17**: Explicit Offline vs AI-Powered mode UI
   - Added Intelligence Status badge next to Backend status (shows "AI-Powered" green or "Offline Mode" amber)
   - Badge includes tooltips explaining each mode
