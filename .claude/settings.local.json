@@ -30,7 +30,11 @@
       "Bash(if [ -d frontend ])",
       "Bash(then find frontend/src -name \"*.tsx\" -o -name \"*.ts\")",
       "Bash(else echo \"Creating frontend structure...\")",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(ls:*)",
+      "Bash(git tag:*)",
+      "Bash(pip install:*)",
+      "Bash(npm run typecheck:*)"
     ]
   }
 }

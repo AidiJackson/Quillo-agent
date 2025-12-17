@@ -1,0 +1,60 @@
+TASK: Make “Offline vs AI-Powered” mode explicit in the Quillo UI (trust layer). Frontend-only changes.
+
+GOAL
+Right now the app can execute without OpenRouter/Anthropic keys by using offline fallbacks. We must make that obvious in the UI so it never feels misleading.
+
+SCOPE
+- Frontend only. Do NOT change backend code in this task.
+- Use the existing API responses and/or existing health check calls.
+- Premium, glassy styling consistent with the current UI.
+
+REQUIREMENTS
+
+1) Add an “Intelligence Status” indicator (always visible)
+- Location: top bar or near the Backend OK badge (wherever fits the design).
+- It should show one of:
+  - “AI-Powered” (green-ish / positive)
+  - “Offline Mode” (amber / warning)
+- Tooltip or helper text:
+  - AI-Powered: “Enhanced reasoning enabled via connected model provider.”
+  - Offline Mode: “Using offline fallbacks. Connect OpenRouter/Anthropic for best results.”
+
+2) Determine status WITHOUT exposing secrets
+Since we can’t change backend, infer from responses:
+- When the user runs Ask or Execute, we already display metadata like model/provider_used.
+- Rule:
+  - If provider_used/model === "offline" → Offline Mode
+  - Else → AI-Powered
+- Persist this status in UI state so it remains visible after first interaction.
+
+3) Add a “Connect AI Provider” CTA when Offline Mode
+- A small button/link next to the Offline indicator: “Connect”
+- Clicking opens a modal:
+  Title: “Enable AI-Powered Mode”
+  Body (simple steps):
+    1) Open Replit Secrets / .env
+    2) Add OPENROUTER_API_KEY=...
+    3) Restart the backend
+  Footer: “Got it” button
+- Do NOT mention any API key values; just instructions.
+
+4) Make execution results clearly label offline outputs
+- In ExecutionResultCard:
+  - If offline: show a subtle banner at top:
+    “Offline output — template-based. Connect AI for stronger judgment.”
+  - If AI-powered: show:
+    “AI-powered output — enhanced reasoning applied.”
+
+5) Ensure no “dev” language
+Replace any labels like “provider” / “artifacts” / “execution trace” in user-facing text.
+Internal metadata can remain small/subtle, but user-facing language should be:
+- “Mode”, “Steps”, “Why this step”, “Result”, “Confidence” (if present)
+
+6) Quality bar
+- No layout break on mobile.
+- No TypeScript errors.
+- Keep styling consistent with existing premium/glass UI.
+
+DELIVERABLE
+- Commit message: "chore(ui): explicit offline vs ai-powered mode"
+- Confirm where in the UI the status appears and show the exact text used.
