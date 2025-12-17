@@ -10,3 +10,4 @@ loguru
 tenacity
 pytest
 psycopg2-binary
+slowapi

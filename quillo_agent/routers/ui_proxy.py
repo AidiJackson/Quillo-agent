@@ -1,0 +1,269 @@
+"""
+UI Proxy (BFF) router - Frontend-facing endpoints without API key exposure
+"""
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from sqlalchemy.orm import Session
+from loguru import logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+from ..config import settings
+from ..db import get_db
+from ..schemas import (
+    RouteRequest, RouteResponse,
+    PlanRequest, PlanResponse,
+    AskRequest, AskResponse,
+    ProfileIn, ProfileOut,
+    FeedbackIn, FeedbackOut
+)
+from ..services import quillo, advice, memory as memory_service
+
+
+# Rate limiter instance
+limiter = Limiter(key_func=get_remote_address)
+
+router = APIRouter(prefix="/ui/api", tags=["ui-proxy"])
+
+
+def verify_ui_token(x_ui_token: str = Header(None, alias="X-UI-Token")) -> str:
+    """
+    Verify UI token for frontend requests.
+
+    For MVP, uses a simple shared token from env.
+    In production, this should be replaced with session-based auth.
+
+    Args:
+        x_ui_token: UI token from X-UI-Token header
+
+    Returns:
+        The validated token
+
+    Raises:
+        HTTPException: If token is missing or invalid
+    """
+    # In dev mode, allow requests without token if QUILLO_UI_TOKEN is not set
+    if settings.app_env == "dev" and not settings.quillo_ui_token:
+        logger.warning("DEV MODE: UI token validation disabled (QUILLO_UI_TOKEN not set)")
+        return "dev-bypass"
+
+    # In production or if token is set, require valid token
+    if not x_ui_token:
+        logger.warning("UI request rejected: missing X-UI-Token header")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing X-UI-Token header. UI requests must include authentication."
+        )
+
+    if x_ui_token != settings.quillo_ui_token:
+        logger.warning("UI request rejected: invalid X-UI-Token")
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid X-UI-Token. Access denied."
+        )
+
+    return x_ui_token
+
+
+@router.get("/health")
+async def ui_health_check():
+    """
+    Health check endpoint for UI (no auth required).
+
+    Returns:
+        Status object
+    """
+    return {"status": "ok", "service": "quillo-ui-proxy"}
+
+
+@router.post("/route", response_model=RouteResponse)
+@limiter.limit("30/minute")
+async def ui_route_intent(
+    request: Request,
+    payload: RouteRequest,
+    token: str = Depends(verify_ui_token)
+) -> RouteResponse:
+    """
+    UI proxy for intent routing.
+
+    Calls underlying service directly without requiring API key.
+    Rate limited to 30 requests per minute per IP.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: RouteRequest with text, user_id, context
+        token: Validated UI token
+
+    Returns:
+        RouteResponse with intent, reasons, and slots
+    """
+    logger.info(f"UI POST /route: user_id={payload.user_id}")
+    response = await quillo.route(
+        text=payload.text,
+        user_id=payload.user_id
+    )
+    return response
+
+
+@router.post("/plan", response_model=PlanResponse)
+@limiter.limit("30/minute")
+async def ui_generate_plan(
+    request: Request,
+    payload: PlanRequest,
+    token: str = Depends(verify_ui_token)
+) -> PlanResponse:
+    """
+    UI proxy for plan generation.
+
+    Calls underlying service directly without requiring API key.
+    Rate limited to 30 requests per minute per IP.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: PlanRequest with intent, slots, text, user_id
+        token: Validated UI token
+
+    Returns:
+        PlanResponse with steps and trace_id
+    """
+    logger.info(f"UI POST /plan: intent={payload.intent}, user_id={payload.user_id}")
+    response = await quillo.plan(
+        intent=payload.intent,
+        slots=payload.slots,
+        text=payload.text,
+        user_id=payload.user_id
+    )
+    return response
+
+
+@router.post("/ask", response_model=AskResponse)
+@limiter.limit("30/minute")
+async def ui_ask_quillopreneur(
+    request: Request,
+    payload: AskRequest,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> AskResponse:
+    """
+    UI proxy for Quillopreneur business advice.
+
+    Calls underlying service directly without requiring API key.
+    Rate limited to 30 requests per minute per IP.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: AskRequest with text and optional user_id
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        AskResponse with answer, model, and trace_id
+    """
+    import uuid
+    logger.info(f"UI POST /ask: user_id={payload.user_id}")
+
+    # Generate trace ID
+    trace_id = str(uuid.uuid4())
+
+    # Get business advice using the service layer
+    answer, model = await advice.answer_business_question(
+        text=payload.text,
+        user_id=payload.user_id,
+        db=db
+    )
+
+    return AskResponse(
+        answer=answer,
+        model=model,
+        trace_id=trace_id
+    )
+
+
+@router.get("/memory/profile", response_model=ProfileOut)
+async def ui_get_profile(
+    user_id: str = Query(..., description="User identifier"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> ProfileOut:
+    """
+    UI proxy for getting user profile.
+
+    Calls underlying service directly without requiring API key.
+
+    Args:
+        user_id: User identifier
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        ProfileOut with markdown content and timestamp
+    """
+    logger.info(f"UI GET /memory/profile: user_id={user_id}")
+    profile_md = memory_service.get_or_init_profile(db, user_id)
+
+    # Get updated_at timestamp
+    from ..models import UserProfile
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    updated_at = profile.updated_at.isoformat() if profile else ""
+
+    return ProfileOut(profile_md=profile_md, updated_at=updated_at)
+
+
+@router.post("/memory/profile", response_model=ProfileOut)
+async def ui_update_profile(
+    payload: ProfileIn,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> ProfileOut:
+    """
+    UI proxy for updating user profile.
+
+    Calls underlying service directly without requiring API key.
+
+    Args:
+        payload: ProfileIn with user_id and profile_md
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        ProfileOut with updated content and timestamp
+    """
+    logger.info(f"UI POST /memory/profile: user_id={payload.user_id}")
+    updated_at = memory_service.update_profile(
+        db,
+        payload.user_id,
+        payload.profile_md
+    )
+    return ProfileOut(
+        profile_md=payload.profile_md,
+        updated_at=updated_at.isoformat()
+    )
+
+
+@router.post("/feedback", response_model=FeedbackOut)
+async def ui_record_feedback(
+    payload: FeedbackIn,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> FeedbackOut:
+    """
+    UI proxy for recording feedback.
+
+    Calls underlying service directly without requiring API key.
+
+    Args:
+        payload: FeedbackIn with user_id, tool, outcome, signals
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        FeedbackOut confirmation
+    """
+    logger.info(f"UI POST /feedback: user_id={payload.user_id}, tool={payload.tool}")
+    memory_service.record_feedback(
+        db,
+        payload.user_id,
+        payload.tool,
+        payload.outcome,
+        payload.signals
+    )
+    return FeedbackOut(ok=True)

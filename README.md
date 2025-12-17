@@ -61,9 +61,11 @@ Server will be available at `http://localhost:8000`
 
 ## 🔐 Authentication
 
-All API endpoints (except `/health`) require authentication using an API key.
+### Backend API Authentication (Server-to-Server)
 
-### Setting Up Your API Key
+All backend API endpoints under `/route`, `/plan`, `/ask`, `/memory`, `/feedback` require authentication using an API key.
+
+**Setting Up Your API Key:**
 
 1. Generate a secure API key (recommended: use a password manager or `openssl rand -hex 32`)
 2. Add it to your `.env` file:
@@ -75,10 +77,40 @@ All API endpoints (except `/health`) require authentication using an API key.
    Authorization: Bearer your-secret-api-key-here
    ```
 
+### Frontend Security (UI Proxy / BFF)
+
+**Important: The frontend NEVER stores or sends API keys.**
+
+To prevent API key exposure in the browser, Quillo uses a **Backend-For-Frontend (BFF) proxy** pattern:
+
+- **Frontend calls**: `/ui/api/*` endpoints (no API key required)
+- **BFF proxy**: Server-side router validates UI token and calls internal services
+- **Security features**:
+  - Rate limiting (30 requests/min per IP for /route, /plan, /ask)
+  - UI token authentication (X-UI-Token header)
+  - Direct service calls (no HTTP overhead)
+
+**UI Token Setup (Dev-Only):**
+
+1. Add UI token to backend `.env`:
+   ```bash
+   QUILLO_UI_TOKEN=dev-ui-token-12345
+   ```
+2. Add UI token to frontend `.env`:
+   ```bash
+   VITE_UI_TOKEN=dev-ui-token-12345
+   ```
+
+**Production Recommendation:**
+- Replace `QUILLO_UI_TOKEN` with session-based authentication
+- Use HTTP-only cookies for session management
+- Implement proper user authentication (OAuth, JWT, etc.)
+
 ### Unauthenticated Access
 
-- ❌ Requests without the `Authorization` header will receive a `401 Unauthorized` response
-- ✅ The `/health` endpoint does not require authentication
+- ❌ Backend API requests without `Authorization` header → `401 Unauthorized`
+- ❌ UI proxy requests without `X-UI-Token` header → `401 Unauthorized` (unless dev mode with no token set)
+- ✅ The `/health` and `/ui/api/health` endpoints do not require authentication
 
 ---
 
@@ -338,6 +370,9 @@ Create a `.env` file from `.env.example`:
 | `ANTHROPIC_API_KEY` | Anthropic API key (optional, fallback) | - |
 | **Model Routing** | | |
 | `MODEL_ROUTING` | Model tier (fast/balanced/premium) | `fast` |
+| **Security** | | |
+| `QUILLO_API_KEY` | Server-side API key for backend endpoints | - |
+| `QUILLO_UI_TOKEN` | UI token for frontend proxy (dev-only) | - |
 
 **Note**: API keys are optional for MVP. Rule-based classification works without them.
 

@@ -6,10 +6,13 @@ import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from loguru import logger
 
 from .config import settings
-from .routers import health, route, plan, memory, feedback, ask
+from .routers import health, route, plan, memory, feedback, ask, ui_proxy
 
 
 # Configure loguru
@@ -44,6 +47,11 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan
     )
+
+    # Rate limiter setup
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # CORS middleware
     app.add_middleware(
@@ -82,5 +90,8 @@ def create_app() -> FastAPI:
     app.include_router(memory.router)
     app.include_router(feedback.router)
     app.include_router(ask.router)
+
+    # UI proxy router (BFF for frontend)
+    app.include_router(ui_proxy.router)
 
     return app

@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # Security settings
     quillo_api_key: str = ""
+    quillo_ui_token: str = ""  # UI-facing token for frontend proxy (dev-safe)
     cors_allowed_origins: str = ""
 
     @property

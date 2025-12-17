@@ -1,12 +1,12 @@
 /**
  * Quillo API Client
  *
- * TODO: Production should use a backend session/token or server-side proxy
- * instead of embedding the API key in the frontend.
+ * Uses server-side proxy (BFF) to avoid exposing API keys in the browser.
+ * The UI token is for dev-only scaffolding; production will use session auth.
  */
 
-const API_BASE = import.meta.env.VITE_QUILLO_API_BASE || '/api';
-const API_KEY = import.meta.env.VITE_QUILLO_API_KEY || '';
+const API_BASE = import.meta.env.VITE_QUILLO_API_BASE || '/ui/api';
+const UI_TOKEN = import.meta.env.VITE_UI_TOKEN || '';
 
 export interface RouteRequest {
   text: string;
@@ -75,12 +75,18 @@ export async function route(text: string, userId: string): Promise<RouteResponse
     user_id: userId,
   };
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
   const response = await fetch(`${API_BASE}/route`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`,
-    },
+    headers,
     body: JSON.stringify(request),
   });
 
@@ -108,12 +114,18 @@ export async function plan(
     user_id: userId,
   };
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
   const response = await fetch(`${API_BASE}/plan`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`,
-    },
+    headers,
     body: JSON.stringify(request),
   });
 
@@ -127,9 +139,6 @@ export async function plan(
 
 /**
  * Ask Quillopreneur for business advice
- *
- * TODO: Production should use a backend session/token or server-side proxy
- * instead of embedding the API key in the frontend.
  */
 export async function ask(text: string, userId?: string): Promise<AskResponse> {
   const request: AskRequest = {
@@ -137,12 +146,18 @@ export async function ask(text: string, userId?: string): Promise<AskResponse> {
     user_id: userId,
   };
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
   const response = await fetch(`${API_BASE}/ask`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`,
-    },
+    headers,
     body: JSON.stringify(request),
   });
 
