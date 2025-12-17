@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
-import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings } from 'lucide-react';
 import { health, route, plan, ask, execute, RouteResponse, PlanResponse, AskResponse, ExecuteResponse } from '@/lib/quilloApi';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from './ui/dialog';
 
 interface Message {
   id: string;
@@ -25,12 +34,10 @@ function displayToolName(toolId: string): string {
     'summarizer': 'Clarity',
   };
 
-  // Return mapped name if exists
   if (toolMap[toolId]) {
     return toolMap[toolId];
   }
 
-  // Fallback: convert snake_case to Title Case
   return toolId
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -38,17 +45,43 @@ function displayToolName(toolId: string): string {
 }
 
 /**
+ * Determine if a provider/model indicates offline mode
+ */
+function isOfflineMode(providerOrModel: string | undefined): boolean {
+  if (!providerOrModel) return true;
+  return providerOrModel.toLowerCase() === 'offline';
+}
+
+/**
  * Component to display execution results with step trace
  */
 function ExecutionResultCard({ executeResult }: { executeResult: ExecuteResponse }) {
   const [showTrace, setShowTrace] = useState(false);
+  const isOffline = isOfflineMode(executeResult.provider_used);
 
   return (
     <div className="bg-green-50 dark:bg-green-900/20 rounded-[16px] px-4 py-3 border border-green-200 dark:border-green-800 text-sm space-y-3">
       <div className="flex items-center gap-2">
         <Play className="w-4 h-4 text-green-600 dark:text-green-400" />
-        <span className="font-semibold text-green-700 dark:text-green-300">Execution Result</span>
+        <span className="font-semibold text-green-700 dark:text-green-300">Result</span>
       </div>
+
+      {/* Mode Banner */}
+      {isOffline ? (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-100 dark:bg-amber-900/30 rounded-[10px] border border-amber-200 dark:border-amber-800">
+          <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+          <span className="text-xs text-amber-700 dark:text-amber-300">
+            Offline output — template-based. Connect AI for stronger judgment.
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-[10px] border border-emerald-200 dark:border-emerald-800">
+          <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+          <span className="text-xs text-emerald-700 dark:text-emerald-300">
+            AI-powered output — enhanced reasoning applied.
+          </span>
+        </div>
+      )}
 
       {/* Warnings */}
       {executeResult.warnings && executeResult.warnings.length > 0 && (
@@ -61,13 +94,13 @@ function ExecutionResultCard({ executeResult }: { executeResult: ExecuteResponse
         </div>
       )}
 
-      {/* Metadata */}
+      {/* Metadata - User-friendly labels */}
       <div className="text-xs text-muted-foreground space-y-1">
-        <p><span className="font-medium">Provider:</span> {executeResult.provider_used}</p>
-        <p><span className="font-medium">Trace ID:</span> {executeResult.trace_id}</p>
+        <p><span className="font-medium">Mode:</span> {isOffline ? 'Offline' : executeResult.provider_used}</p>
+        <p><span className="font-medium">Result ID:</span> {executeResult.trace_id}</p>
       </div>
 
-      {/* Step Trace Toggle */}
+      {/* Steps Toggle (renamed from Step Trace) */}
       {executeResult.artifacts && executeResult.artifacts.length > 0 && (
         <div>
           <button
@@ -75,7 +108,7 @@ function ExecutionResultCard({ executeResult }: { executeResult: ExecuteResponse
             className="flex items-center gap-2 text-xs text-green-700 dark:text-green-300 hover:text-green-800 dark:hover:text-green-200 font-medium"
           >
             {showTrace ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            Step Trace ({executeResult.artifacts.length} steps)
+            Steps ({executeResult.artifacts.length})
           </button>
 
           {showTrace && (
@@ -89,7 +122,7 @@ function ExecutionResultCard({ executeResult }: { executeResult: ExecuteResponse
                     Step {artifact.step_index + 1}: {displayToolName(artifact.tool)}
                   </p>
                   <div className="text-xs text-muted-foreground space-y-1">
-                    <p className="italic">Output: {artifact.output_excerpt}</p>
+                    <p className="italic">Result: {artifact.output_excerpt}</p>
                   </div>
                 </div>
               ))}
@@ -97,6 +130,116 @@ function ExecutionResultCard({ executeResult }: { executeResult: ExecuteResponse
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Connect AI Provider Modal Component
+ */
+function ConnectAIModal() {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button className="text-xs text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 font-medium underline underline-offset-2 ml-1">
+          Connect
+        </button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-border/50">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Zap className="w-5 h-5 text-primary" />
+            Enable AI-Powered Mode
+          </DialogTitle>
+          <DialogDescription>
+            Connect an AI provider to unlock enhanced reasoning capabilities.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                1
+              </div>
+              <div className="text-sm">
+                <p className="font-medium">Open Secrets</p>
+                <p className="text-muted-foreground">Go to Replit Secrets panel or your .env file</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                2
+              </div>
+              <div className="text-sm">
+                <p className="font-medium">Add API Key</p>
+                <p className="text-muted-foreground">Add OPENROUTER_API_KEY or ANTHROPIC_API_KEY</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                3
+              </div>
+              <div className="text-sm">
+                <p className="font-medium">Restart Backend</p>
+                <p className="text-muted-foreground">Restart the Quillo Agent API to apply changes</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogTrigger asChild>
+            <button className="px-4 py-2 bg-primary text-primary-foreground rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium">
+              Got it
+            </button>
+          </DialogTrigger>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Intelligence Status Badge Component
+ */
+function IntelligenceStatusBadge({ 
+  status 
+}: { 
+  status: 'unknown' | 'ai-powered' | 'offline' 
+}) {
+  if (status === 'unknown') {
+    return null;
+  }
+
+  const isAIPowered = status === 'ai-powered';
+
+  return (
+    <div 
+      className={`group relative px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
+        isAIPowered
+          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+      }`}
+    >
+      {isAIPowered ? (
+        <>
+          <Zap className="w-3 h-3" />
+          AI-Powered
+        </>
+      ) : (
+        <>
+          <WifiOff className="w-3 h-3" />
+          Offline Mode
+          <ConnectAIModal />
+        </>
+      )}
+      {/* Tooltip */}
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+        {isAIPowered 
+          ? 'Enhanced reasoning enabled via connected model provider.' 
+          : 'Using offline fallbacks. Connect OpenRouter/Anthropic for best results.'
+        }
+        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
+      </div>
     </div>
   );
 }
@@ -113,6 +256,7 @@ export function ChatScreen() {
   const [input, setInput] = useState('');
   const [showPlanTrace, setShowPlanTrace] = useState(true);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [intelligenceStatus, setIntelligenceStatus] = useState<'unknown' | 'ai-powered' | 'offline'>('offline');
   const [planResult, setPlanResult] = useState<PlanResponse | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
@@ -137,6 +281,14 @@ export function ChatScreen() {
     checkHealth();
   }, []);
 
+  /**
+   * Update intelligence status based on API response
+   */
+  const updateIntelligenceStatus = (providerOrModel: string | undefined) => {
+    if (!providerOrModel) return;
+    setIntelligenceStatus(isOfflineMode(providerOrModel) ? 'offline' : 'ai-powered');
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -151,11 +303,9 @@ export function ChatScreen() {
     const userInput = input;
     setInput('');
 
-    // Call route API
     try {
       const routeResult = await route(userInput, 'demo');
 
-      // Store last user message for plan button
       setLastUserMessage({ text: userInput, routeResult });
 
       const aiMessage: Message = {
@@ -222,6 +372,9 @@ export function ChatScreen() {
     try {
       const askResult = await ask(userInput, 'demo');
 
+      // Update intelligence status based on model used
+      updateIntelligenceStatus(askResult.model);
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -257,7 +410,9 @@ export function ChatScreen() {
         true  // dry_run mode
       );
 
-      // Add execution result as assistant message
+      // Update intelligence status based on provider used
+      updateIntelligenceStatus(executeResult.provider_used);
+
       const aiMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
@@ -278,8 +433,12 @@ export function ChatScreen() {
     <div className="flex-1 flex gap-6 h-full overflow-hidden">
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Backend Status Badge */}
-        <div className="p-4 flex justify-end">
+        {/* Status Badges */}
+        <div className="p-4 flex justify-end gap-2 flex-wrap">
+          {/* Intelligence Status Badge */}
+          <IntelligenceStatusBadge status={intelligenceStatus} />
+          
+          {/* Backend Status Badge */}
           <div className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
             backendStatus === 'online'
               ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
@@ -329,16 +488,16 @@ export function ChatScreen() {
                   <div className="bg-accent/50 dark:bg-slate-700/50 rounded-[16px] px-4 py-3 border border-border/50 text-xs space-y-2">
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-primary" />
-                      <span className="font-semibold">Route Result</span>
+                      <span className="font-semibold">Classification</span>
                     </div>
                     <div className="space-y-1">
                       <p><span className="font-medium">Intent:</span> {message.routeResult.intent}</p>
                       {message.routeResult.slots && Object.keys(message.routeResult.slots).length > 0 && (
-                        <p><span className="font-medium">Slots:</span> {JSON.stringify(message.routeResult.slots)}</p>
+                        <p><span className="font-medium">Details:</span> {JSON.stringify(message.routeResult.slots)}</p>
                       )}
                       {message.routeResult.reasons && message.routeResult.reasons.length > 0 && (
                         <div>
-                          <p className="font-medium">Reasons:</p>
+                          <p className="font-medium">Why this classification:</p>
                           <ul className="list-disc list-inside pl-2 text-muted-foreground">
                             {message.routeResult.reasons.map((reason, idx) => (
                               <li key={idx}>{reason}</li>
@@ -350,11 +509,11 @@ export function ChatScreen() {
                   </div>
                 )}
 
-                {/* Ask Result Metadata */}
+                {/* Ask Result Metadata - User-friendly labels */}
                 {message.askResult && (
                   <div className="text-xs text-muted-foreground space-y-0.5">
-                    <p>Model: {message.askResult.model}</p>
-                    <p>Trace: {message.askResult.trace_id}</p>
+                    <p>Mode: {isOfflineMode(message.askResult.model) ? 'Offline' : message.askResult.model}</p>
+                    <p>Result ID: {message.askResult.trace_id}</p>
                   </div>
                 )}
 
@@ -390,7 +549,7 @@ export function ChatScreen() {
 
             {/* Mode Switch */}
             <div className="space-y-2">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="inline-flex bg-accent/30 rounded-[12px] p-1">
                   <button
                     onClick={() => setMode('ask')}
@@ -482,12 +641,12 @@ export function ChatScreen() {
         </div>
       </div>
 
-      {/* Plan Trace Panel */}
+      {/* Plan Panel (renamed from Plan Trace) */}
       {showPlanTrace && (
         <GlassCard className="w-80 hidden xl:block p-6 overflow-y-auto">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Brain className="w-5 h-5 text-primary" />
-            Plan Trace
+            Plan
           </h3>
 
           {planError && (
@@ -520,7 +679,7 @@ export function ChatScreen() {
               </div>
 
               <div className="mt-4 p-3 bg-secondary/10 rounded-[12px] text-xs">
-                <p className="font-medium text-secondary mb-1">Trace ID</p>
+                <p className="font-medium text-secondary mb-1">Result ID</p>
                 <p className="text-muted-foreground font-mono break-all">{planResult.trace_id}</p>
               </div>
             </>
