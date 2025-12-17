@@ -1,0 +1,77 @@
+TASK: Fix 403 “Not authenticated” from /ui/api/* by making UI token wiring deterministic (no guessing).
+
+CONTEXT
+The Quillo UI shows Backend: OK but Route fails with:
+403 {"detail":"Not authenticated"}
+This comes from the BFF UI proxy auth check (X-UI-Token). We need a robust dev + prod approach.
+
+GOAL
+- In DEV: UI should work out-of-the-box without manual token setup (but still safe and explicit).
+- In PROD: UI token must be required and validated.
+- Remove ambiguity: add clear diagnostics and a visible UI message when token missing/mismatched.
+
+SCOPE
+Backend + frontend changes are allowed. Keep it minimal and premium.
+
+REQUIREMENTS
+
+1) Backend (BFF) — dev-friendly but safe
+- In quillo_agent/routers/ui_proxy.py (or wherever verify_ui_token lives):
+  a) If APP_ENV == "dev":
+     - Allow requests even if QUILLO_UI_TOKEN is not set (bypass)
+     - BUT log a single WARN on startup or first request: “UI token bypass active (dev)”
+  b) If APP_ENV != "dev" (prod):
+     - Require QUILLO_UI_TOKEN to be set
+     - Require X-UI-Token header
+     - Compare constant-time (use hmac.compare_digest)
+     - On failure, return 403 with a clearer detail message:
+       “UI token missing or invalid”
+
+2) Backend — add a non-sensitive debug endpoint for the UI
+- Add GET /ui/api/auth/status
+- Returns JSON (no secrets):
+  {
+    "env": "dev"|"prod",
+    "ui_token_required": true|false,
+    "ui_token_configured": true|false,
+    "hint": "Set QUILLO_UI_TOKEN and VITE_UI_TOKEN to the same value" (dev hint only)
+  }
+- This endpoint must be safe (never returns token values).
+- This endpoint should be accessible without UI token in dev, and with UI token in prod (or keep it unauthenticated but safe—your call, but explain in code comments).
+
+3) Frontend — stop relying on “silent” env
+- In frontend/src/lib/quilloApi.ts:
+  - Ensure we read token as:
+    const UI_TOKEN = import.meta.env.VITE_UI_TOKEN;
+  - Always send header if present:
+    headers["X-UI-Token"] = UI_TOKEN
+  - If UI_TOKEN is missing:
+    - Still make requests (dev will bypass), but surface a UI warning:
+      “UI token not configured — running in dev bypass mode.”
+
+4) Frontend — show token/auth status in the UI
+- On app load (ChatScreen mount), call GET /ui/api/auth/status
+- Display a small, premium notice near the Intelligence/Backend badges:
+  - If ui_token_required && !ui_token_configured:
+    “UI token required (backend not configured)”
+  - If !ui_token_required:
+    “Dev bypass enabled”
+  - If configured:
+    “UI auth configured”
+
+5) Tests
+- Add/extend tests to cover:
+  - dev bypass works when QUILLO_UI_TOKEN missing
+  - prod rejects missing token
+  - prod rejects wrong token
+  - auth/status returns correct booleans
+- Keep all existing tests passing.
+
+6) Deliverable
+- Commit message: "fix(ui-proxy): deterministic ui token auth + status endpoint"
+- Push to origin/main.
+- Report: the new /ui/api/auth/status response in dev, and confirm Route works without 403.
+
+IMPORTANT
+Do not expose any secret values in responses or logs.
+Do not change the main API key auth (QUILLO_API_KEY) logic.
