@@ -26,7 +26,11 @@
       "Bash(fi)",
       "Bash(if grep -q \"^QUILLO_API_KEY=\" .env)",
       "Bash(then sed -i 's/^QUILLO_API_KEY=.*/QUILLO_API_KEY=dev-test-key-12345/' .env)",
-      "Bash(else echo \"QUILLO_API_KEY=dev-test-key-12345\")"
+      "Bash(else echo \"QUILLO_API_KEY=dev-test-key-12345\")",
+      "Bash(if [ -d frontend ])",
+      "Bash(then find frontend/src -name \"*.tsx\" -o -name \"*.ts\")",
+      "Bash(else echo \"Creating frontend structure...\")",
+      "Bash(git check-ignore:*)"
     ]
   }
 }
