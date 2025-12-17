@@ -6,7 +6,7 @@ import httpx
 from typing import Optional
 from loguru import logger
 from sqlalchemy.orm import Session
-from ..config import settings
+from ..config import settings, is_offline_mode
 from ..models import UserProfile
 from .llm import LLMRouter
 
@@ -64,6 +64,11 @@ async def answer_business_question(
         except Exception as e:
             logger.warning(f"Failed to load user profile: {e}")
 
+    # Check if we're in offline mode first
+    if is_offline_mode():
+        logger.info("Using offline business advice template (no API keys configured)")
+        return OFFLINE_TEMPLATES["default"], "template"
+
     # Try OpenRouter first if configured
     if settings.openrouter_api_key:
         try:
@@ -87,9 +92,9 @@ async def answer_business_question(
             logger.error(f"Anthropic API failed: {e}")
             # Fall through to offline response
 
-    # Offline fallback
-    logger.info("Using offline business advice template")
-    return OFFLINE_TEMPLATES["default"], "offline"
+    # Offline fallback (API call failed)
+    logger.warning("API calls failed, falling back to offline template")
+    return OFFLINE_TEMPLATES["default"], "template"
 
 
 async def _answer_with_anthropic(text: str, profile_excerpt: str) -> str:

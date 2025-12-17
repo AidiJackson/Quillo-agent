@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any, List, Tuple
 from loguru import logger
 from ..schemas import PlanStep, ExecutionArtifact
 from .llm import LLMRouter
-from ..config import settings
+from ..config import settings, is_offline_mode
 
 
 # Offline templates for tool execution when no LLM is available
@@ -180,7 +180,10 @@ class ExecutionService:
             warnings.append("DRY RUN MODE: No actual external actions performed")
 
         # Determine provider availability
-        if settings.openrouter_api_key:
+        if is_offline_mode():
+            provider_used = "template"
+            logger.debug("Running in offline mode - using template execution")
+        elif settings.openrouter_api_key:
             provider_used = "openrouter"
         elif settings.anthropic_api_key:
             provider_used = "anthropic"

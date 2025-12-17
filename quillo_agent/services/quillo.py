@@ -8,7 +8,7 @@ from ..schemas import RouteResponse, PlanResponse, PlanStep
 from ..utils.classifier import classify
 from ..utils.explain import build_rationale
 from .llm import LLMRouter
-from ..config import settings
+from ..config import settings, is_offline_mode
 
 
 llm_router = LLMRouter()
@@ -36,8 +36,8 @@ async def route(text: str, user_id: Optional[str] = None) -> RouteResponse:
     slots = result.get("slots")
     confidence = result["confidence"]
 
-    # If confidence is low, try LLM fallback
-    if confidence < 0.6:
+    # If confidence is low and we have API keys, try LLM fallback
+    if confidence < 0.6 and not is_offline_mode():
         logger.debug(f"Low confidence ({confidence}); trying LLM fallback")
         llm_result = await llm_router.classify_fallback(text)
         if llm_result:
@@ -46,6 +46,9 @@ async def route(text: str, user_id: Optional[str] = None) -> RouteResponse:
             slots = llm_result.get("slots", slots)
             confidence = llm_result.get("confidence", confidence)
             reasons.append(f"LLM fallback applied (confidence: {confidence:.2f})")
+    elif confidence < 0.6:
+        logger.debug(f"Low confidence ({confidence}) but offline mode - using rule-based result")
+        reasons.append("Offline mode: rule-based classification only")
 
     logger.info(f"Routed to intent: {intent} (confidence: {confidence:.2f})")
     return RouteResponse(intent=intent, reasons=reasons, slots=slots)
@@ -74,8 +77,8 @@ async def plan(
     trace_id = str(uuid.uuid4())
     steps: List[PlanStep] = []
 
-    # Try LLM-based planning if MODEL_ROUTING=premium and OpenRouter is configured
-    if settings.model_routing == "premium":
+    # Try LLM-based planning if MODEL_ROUTING=premium and not in offline mode
+    if settings.model_routing == "premium" and not is_offline_mode():
         logger.debug("Attempting LLM-based plan enrichment (premium mode)")
         llm_steps = await llm_router.plan_reasoning(intent, slots, text)
         if llm_steps:
@@ -86,6 +89,8 @@ async def plan(
                 return PlanResponse(steps=steps, trace_id=trace_id)
             except Exception as e:
                 logger.warning(f"Failed to parse LLM steps, falling back to deterministic: {e}")
+    elif settings.model_routing == "premium":
+        logger.debug("Premium mode requested but offline - using deterministic planning")
 
     # Deterministic planning (fallback or default for non-premium)
     if intent == "response":

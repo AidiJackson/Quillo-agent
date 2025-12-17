@@ -54,3 +54,17 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+
+def is_offline_mode() -> bool:
+    """
+    Check if the system is running in offline mode (no AI API keys configured).
+
+    Returns True when both OPENROUTER_API_KEY and ANTHROPIC_API_KEY are missing
+    or empty. In offline mode, the system uses rule-based classification and
+    template-based execution instead of LLM calls.
+
+    Returns:
+        True if no AI API keys are configured, False otherwise
+    """
+    return not settings.openrouter_api_key and not settings.anthropic_api_key
