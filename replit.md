@@ -8,7 +8,7 @@ Quillo Agent is an AI Chief of Staff orchestrator MVP with a React frontend and 
 - **Frontend**: React + Vite + TypeScript (port 5000)
 - **Backend**: FastAPI (Python 3.11, port 8000)
 - **Database**: PostgreSQL (Replit-managed)
-- **Last Updated**: December 14, 2025
+- **Last Updated**: December 17, 2025
 
 ## Project Architecture
 
@@ -142,6 +142,14 @@ alembic revision --autogenerate -m "description"
 - Tables: user_profiles, feedback_logs
 
 ## Recent Changes
+- **2025-12-17**: Explicit Offline vs AI-Powered mode UI
+  - Added Intelligence Status badge next to Backend status (shows "AI-Powered" green or "Offline Mode" amber)
+  - Badge includes tooltips explaining each mode
+  - "Connect" button on Offline Mode opens modal with setup instructions for API keys
+  - ExecutionResultCard now shows mode banners at top ("Offline output — template-based" or "AI-powered output — enhanced reasoning")
+  - Replaced dev language: Provider→Mode, Trace ID→Result ID, Step Trace→Steps, Route Result→Classification
+  - Mobile-responsive layout with flex-wrap on badges
+
 - **2025-12-14**: Added React frontend UI
   - Imported Quillo AI Web App UI (React + Vite + TypeScript)
   - Configured dual workflows: frontend (5000) + backend (8000)
