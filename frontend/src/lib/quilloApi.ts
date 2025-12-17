@@ -53,6 +53,30 @@ export interface AskResponse {
   trace_id: string;
 }
 
+export interface ExecuteRequest {
+  user_id?: string;
+  text: string;
+  intent: string;
+  slots?: Record<string, any> | null;
+  plan_steps: PlanStep[];
+  dry_run?: boolean;
+}
+
+export interface ExecutionArtifact {
+  step_index: number;
+  tool: string;
+  input_excerpt: string;
+  output_excerpt: string;
+}
+
+export interface ExecuteResponse {
+  output_text: string;
+  artifacts: ExecutionArtifact[];
+  trace_id: string;
+  provider_used: string;
+  warnings: string[];
+}
+
 /**
  * Check backend health status
  */
@@ -164,6 +188,49 @@ export async function ask(text: string, userId?: string): Promise<AskResponse> {
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Ask failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Execute a plan by running each step
+ */
+export async function execute(
+  text: string,
+  intent: string,
+  planSteps: PlanStep[],
+  slots?: Record<string, any> | null,
+  userId?: string,
+  dryRun: boolean = true
+): Promise<ExecuteResponse> {
+  const request: ExecuteRequest = {
+    user_id: userId,
+    text,
+    intent,
+    slots,
+    plan_steps: planSteps,
+    dry_run: dryRun,
+  };
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/execute`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Execute failed: ${response.status} - ${error}`);
   }
 
   return response.json();

@@ -77,3 +77,30 @@ class AskResponse(BaseModel):
     answer: str = Field(..., description="Business advice response")
     model: str = Field(..., description="Model used for response (e.g., 'claude-3-5-sonnet' or 'offline')")
     trace_id: str = Field(..., description="Trace identifier for debugging")
+
+
+class ExecuteRequest(BaseModel):
+    """Request for plan execution"""
+    user_id: Optional[str] = Field(None, description="User identifier")
+    text: str = Field(..., description="Original user input text")
+    intent: str = Field(..., description="Detected intent")
+    slots: Optional[Dict[str, Any]] = Field(None, description="Extracted slots")
+    plan_steps: List[PlanStep] = Field(..., description="Plan steps to execute")
+    dry_run: bool = Field(True, description="If true, simulates execution safely")
+
+
+class ExecutionArtifact(BaseModel):
+    """Artifact from a single execution step"""
+    step_index: int = Field(..., description="Index of the step (0-based)")
+    tool: str = Field(..., description="Tool that was executed")
+    input_excerpt: str = Field(..., description="Brief input summary")
+    output_excerpt: str = Field(..., description="Brief output summary")
+
+
+class ExecuteResponse(BaseModel):
+    """Response from plan execution"""
+    output_text: str = Field(..., description="Final execution output")
+    artifacts: List[ExecutionArtifact] = Field(default_factory=list, description="Step-by-step execution trace")
+    trace_id: str = Field(..., description="Trace identifier for debugging")
+    provider_used: str = Field(..., description="LLM provider used (openrouter/anthropic/offline)")
+    warnings: List[str] = Field(default_factory=list, description="Any warnings during execution")

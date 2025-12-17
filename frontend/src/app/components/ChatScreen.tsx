@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
-import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle } from 'lucide-react';
-import { health, route, plan, ask, RouteResponse, PlanResponse, AskResponse } from '@/lib/quilloApi';
+import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { health, route, plan, ask, execute, RouteResponse, PlanResponse, AskResponse, ExecuteResponse } from '@/lib/quilloApi';
 
 interface Message {
   id: string;
@@ -10,6 +10,7 @@ interface Message {
   timestamp: Date;
   routeResult?: RouteResponse;
   askResult?: AskResponse;
+  executeResult?: ExecuteResponse;
 }
 
 /**
@@ -36,6 +37,70 @@ function displayToolName(toolId: string): string {
     .join(' ');
 }
 
+/**
+ * Component to display execution results with step trace
+ */
+function ExecutionResultCard({ executeResult }: { executeResult: ExecuteResponse }) {
+  const [showTrace, setShowTrace] = useState(false);
+
+  return (
+    <div className="bg-green-50 dark:bg-green-900/20 rounded-[16px] px-4 py-3 border border-green-200 dark:border-green-800 text-sm space-y-3">
+      <div className="flex items-center gap-2">
+        <Play className="w-4 h-4 text-green-600 dark:text-green-400" />
+        <span className="font-semibold text-green-700 dark:text-green-300">Execution Result</span>
+      </div>
+
+      {/* Warnings */}
+      {executeResult.warnings && executeResult.warnings.length > 0 && (
+        <div className="space-y-1">
+          {executeResult.warnings.map((warning, idx) => (
+            <p key={idx} className="text-xs text-orange-600 dark:text-orange-400 italic">
+              ⚠️ {warning}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* Metadata */}
+      <div className="text-xs text-muted-foreground space-y-1">
+        <p><span className="font-medium">Provider:</span> {executeResult.provider_used}</p>
+        <p><span className="font-medium">Trace ID:</span> {executeResult.trace_id}</p>
+      </div>
+
+      {/* Step Trace Toggle */}
+      {executeResult.artifacts && executeResult.artifacts.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowTrace(!showTrace)}
+            className="flex items-center gap-2 text-xs text-green-700 dark:text-green-300 hover:text-green-800 dark:hover:text-green-200 font-medium"
+          >
+            {showTrace ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            Step Trace ({executeResult.artifacts.length} steps)
+          </button>
+
+          {showTrace && (
+            <div className="mt-3 space-y-2">
+              {executeResult.artifacts.map((artifact, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 bg-white/50 dark:bg-slate-800/50 rounded-[12px] border border-green-200/50 dark:border-green-800/50"
+                >
+                  <p className="font-medium text-xs text-green-700 dark:text-green-300 mb-1">
+                    Step {artifact.step_index + 1}: {displayToolName(artifact.tool)}
+                  </p>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p className="italic">Output: {artifact.output_excerpt}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -54,8 +119,9 @@ export function ChatScreen() {
   const [lastUserMessage, setLastUserMessage] = useState<{ text: string; routeResult?: RouteResponse } | null>(null);
   const [askLoading, setAskLoading] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
+  const [executeLoading, setExecuteLoading] = useState(false);
+  const [executeError, setExecuteError] = useState<string | null>(null);
   const [mode, setMode] = useState<'ask' | 'orchestrate'>('ask');
-  const [showComingSoonModal, setShowComingSoonModal] = useState(false);
 
   // Check backend health on mount
   useEffect(() => {
@@ -172,6 +238,42 @@ export function ChatScreen() {
     }
   };
 
+  const handleExecute = async () => {
+    if (!planResult || !lastUserMessage?.routeResult) {
+      setExecuteError('Please generate a plan first');
+      return;
+    }
+
+    setExecuteLoading(true);
+    setExecuteError(null);
+
+    try {
+      const executeResult = await execute(
+        lastUserMessage.text,
+        lastUserMessage.routeResult.intent,
+        planResult.steps,
+        lastUserMessage.routeResult.slots,
+        'demo',
+        true  // dry_run mode
+      );
+
+      // Add execution result as assistant message
+      const aiMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: executeResult.output_text,
+        timestamp: new Date(),
+        executeResult,
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Execute API failed:', error);
+      setExecuteError(error instanceof Error ? error.message : 'Failed to execute plan');
+    } finally {
+      setExecuteLoading(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex gap-6 h-full overflow-hidden">
       {/* Main Chat Area */}
@@ -255,6 +357,11 @@ export function ChatScreen() {
                     <p>Trace: {message.askResult.trace_id}</p>
                   </div>
                 )}
+
+                {/* Execute Result Card */}
+                {message.executeResult && (
+                  <ExecutionResultCard executeResult={message.executeResult} />
+                )}
               </div>
             </div>
           ))}
@@ -329,11 +436,12 @@ export function ChatScreen() {
                     {planLoading ? 'Planning...' : 'Plan'}
                   </button>
                   <button
-                    onClick={() => setShowComingSoonModal(true)}
-                    className="px-4 py-2 bg-secondary/20 text-secondary rounded-[12px] hover:bg-secondary/30 transition-all text-sm flex items-center gap-2"
+                    onClick={handleExecute}
+                    disabled={!planResult || executeLoading}
+                    className="px-4 py-2 bg-secondary/20 text-secondary rounded-[12px] hover:bg-secondary/30 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Play className="w-4 h-4" />
-                    Run Plan
+                    {executeLoading ? 'Running...' : 'Run Plan'}
                   </button>
                 </>
               )}
@@ -361,6 +469,13 @@ export function ChatScreen() {
             {askError && (
               <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-[12px] text-xs">
                 {askError}
+              </div>
+            )}
+
+            {/* Execute Error Display */}
+            {executeError && (
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-[12px] text-xs">
+                {executeError}
               </div>
             )}
           </div>
@@ -417,26 +532,6 @@ export function ChatScreen() {
         </GlassCard>
       )}
 
-      {/* Coming Soon Modal */}
-      {showComingSoonModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 rounded-[20px] p-6 max-w-md w-full shadow-2xl border border-border">
-            <h3 className="text-xl font-semibold mb-3 text-foreground">
-              Execution Coming Soon
-            </h3>
-            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-              Quillo will soon be able to automatically run multi-step plans using your QuillConnect tools.
-              For now, review the plan and run each step manually.
-            </p>
-            <button
-              onClick={() => setShowComingSoonModal(false)}
-              className="w-full px-4 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-[16px] hover:shadow-lg transition-all font-medium"
-            >
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

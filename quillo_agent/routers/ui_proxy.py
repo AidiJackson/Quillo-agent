@@ -14,9 +14,11 @@ from ..schemas import (
     PlanRequest, PlanResponse,
     AskRequest, AskResponse,
     ProfileIn, ProfileOut,
-    FeedbackIn, FeedbackOut
+    FeedbackIn, FeedbackOut,
+    ExecuteRequest, ExecuteResponse
 )
 from ..services import quillo, advice, memory as memory_service
+from ..services.execution import execution_service
 
 
 # Rate limiter instance
@@ -267,3 +269,50 @@ async def ui_record_feedback(
         payload.signals
     )
     return FeedbackOut(ok=True)
+
+
+@router.post("/execute", response_model=ExecuteResponse)
+@limiter.limit("30/minute")
+async def ui_execute_plan(
+    request: Request,
+    payload: ExecuteRequest,
+    token: str = Depends(verify_ui_token)
+) -> ExecuteResponse:
+    """
+    UI proxy for plan execution.
+
+    Executes a plan by running each step with LLM-based tool simulation.
+    Safe execution - no external actions performed.
+    Rate limited to 30 requests per minute per IP.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: ExecuteRequest with intent, slots, plan_steps, etc.
+        token: Validated UI token
+
+    Returns:
+        ExecuteResponse with output_text, artifacts, trace_id, provider, warnings
+    """
+    import uuid
+    logger.info(f"UI POST /execute: intent={payload.intent}, user_id={payload.user_id}, dry_run={payload.dry_run}")
+
+    # Generate trace ID
+    trace_id = str(uuid.uuid4())
+
+    # Execute the plan
+    output_text, artifacts, provider_used, warnings = await execution_service.execute_plan(
+        text=payload.text,
+        intent=payload.intent,
+        slots=payload.slots,
+        plan_steps=payload.plan_steps,
+        user_id=payload.user_id,
+        dry_run=payload.dry_run
+    )
+
+    return ExecuteResponse(
+        output_text=output_text,
+        artifacts=artifacts,
+        trace_id=trace_id,
+        provider_used=provider_used,
+        warnings=warnings
+    )
