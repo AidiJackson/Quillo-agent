@@ -24,6 +24,13 @@ export interface HealthResponse {
   status: string;
 }
 
+export interface AuthStatusResponse {
+  env: string;
+  ui_token_required: boolean;
+  ui_token_configured: boolean;
+  hint: string | null;
+}
+
 export interface PlanRequest {
   intent: string;
   text?: string;
@@ -88,6 +95,27 @@ export async function health(): Promise<HealthResponse> {
   }
 
   return response.json();
+}
+
+/**
+ * Check UI auth status (no auth required)
+ * Returns info about whether UI token auth is configured/required
+ */
+export async function authStatus(): Promise<AuthStatusResponse> {
+  const response = await fetch(`${API_BASE}/auth/status`);
+
+  if (!response.ok) {
+    throw new Error(`Auth status check failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Check if UI token is configured in the frontend
+ */
+export function hasUiToken(): boolean {
+  return Boolean(UI_TOKEN);
 }
 
 /**

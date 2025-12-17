@@ -1,13 +1,18 @@
 """
 UI Proxy (BFF) router - Frontend-facing endpoints without API key exposure
 """
+import hmac
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from loguru import logger
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from ..config import settings
+
+# Track if dev bypass warning has been logged (log once, not every request)
+_dev_bypass_logged = False
 from ..db import get_db
 from ..schemas import (
     RouteRequest, RouteResponse,
@@ -27,6 +32,14 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/ui/api", tags=["ui-proxy"])
 
 
+class AuthStatusResponse(BaseModel):
+    """Auth status response (never exposes secrets)"""
+    env: str
+    ui_token_required: bool
+    ui_token_configured: bool
+    hint: str | None = None
+
+
 def verify_ui_token(x_ui_token: str = Header(None, alias="X-UI-Token")) -> str:
     """
     Verify UI token for frontend requests.
@@ -34,33 +47,54 @@ def verify_ui_token(x_ui_token: str = Header(None, alias="X-UI-Token")) -> str:
     For MVP, uses a simple shared token from env.
     In production, this should be replaced with session-based auth.
 
+    Dev mode behavior:
+    - If QUILLO_UI_TOKEN is NOT set: bypass auth entirely (log warning once)
+    - If QUILLO_UI_TOKEN IS set: require valid token
+
+    Production behavior:
+    - Always require QUILLO_UI_TOKEN to be configured
+    - Always require valid X-UI-Token header
+    - Use constant-time comparison to prevent timing attacks
+
     Args:
         x_ui_token: UI token from X-UI-Token header
 
     Returns:
-        The validated token
+        The validated token or "dev-bypass"
 
     Raises:
         HTTPException: If token is missing or invalid
     """
-    # In dev mode, allow requests without token if QUILLO_UI_TOKEN is not set
+    global _dev_bypass_logged
+
+    # Dev mode with no token configured = bypass (safe for local dev)
     if settings.app_env == "dev" and not settings.quillo_ui_token:
-        logger.warning("DEV MODE: UI token validation disabled (QUILLO_UI_TOKEN not set)")
+        if not _dev_bypass_logged:
+            logger.warning("DEV MODE: UI token bypass active (QUILLO_UI_TOKEN not set)")
+            _dev_bypass_logged = True
         return "dev-bypass"
 
-    # In production or if token is set, require valid token
+    # From here, token is required (either prod, or dev with token configured)
+    if not settings.quillo_ui_token:
+        logger.error("QUILLO_UI_TOKEN not configured in production mode")
+        raise HTTPException(
+            status_code=500,
+            detail="Server misconfiguration: UI token not set"
+        )
+
     if not x_ui_token:
         logger.warning("UI request rejected: missing X-UI-Token header")
         raise HTTPException(
             status_code=401,
-            detail="Missing X-UI-Token header. UI requests must include authentication."
+            detail="UI token missing or invalid"
         )
 
-    if x_ui_token != settings.quillo_ui_token:
+    # Constant-time comparison to prevent timing attacks
+    if not hmac.compare_digest(x_ui_token, settings.quillo_ui_token):
         logger.warning("UI request rejected: invalid X-UI-Token")
         raise HTTPException(
             status_code=403,
-            detail="Invalid X-UI-Token. Access denied."
+            detail="UI token missing or invalid"
         )
 
     return x_ui_token
@@ -75,6 +109,36 @@ async def ui_health_check():
         Status object
     """
     return {"status": "ok", "service": "quillo-ui-proxy"}
+
+
+@router.get("/auth/status", response_model=AuthStatusResponse)
+async def ui_auth_status():
+    """
+    Auth status endpoint for UI diagnostics (no auth required, no secrets exposed).
+
+    Returns status booleans so the frontend can display appropriate messaging
+    about whether UI token auth is configured and required.
+
+    This endpoint is intentionally unauthenticated so the frontend can always
+    check auth status, even when misconfigured.
+
+    Returns:
+        AuthStatusResponse with env, ui_token_required, ui_token_configured, hint
+    """
+    is_dev = settings.app_env == "dev"
+    token_configured = bool(settings.quillo_ui_token)
+    token_required = not is_dev or token_configured
+
+    hint = None
+    if is_dev and not token_configured:
+        hint = "Dev bypass active. Set QUILLO_UI_TOKEN and VITE_UI_TOKEN to enable auth."
+
+    return AuthStatusResponse(
+        env=settings.app_env,
+        ui_token_required=token_required,
+        ui_token_configured=token_configured,
+        hint=hint
+    )
 
 
 @router.post("/route", response_model=RouteResponse)

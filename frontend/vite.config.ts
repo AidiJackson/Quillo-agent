@@ -8,6 +8,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  define: {
+    'import.meta.env.VITE_UI_TOKEN': JSON.stringify(process.env.VITE_UI_TOKEN || ''),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -22,6 +25,10 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/ui/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
       },
     },
   },

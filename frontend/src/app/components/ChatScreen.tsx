@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings } from 'lucide-react';
-import { health, route, plan, ask, execute, RouteResponse, PlanResponse, AskResponse, ExecuteResponse } from '@/lib/quilloApi';
+import { health, route, plan, ask, execute, authStatus as fetchAuthStatus, RouteResponse, PlanResponse, AskResponse, ExecuteResponse } from '@/lib/quilloApi';
 import {
   Dialog,
   DialogContent,
@@ -257,6 +257,7 @@ export function ChatScreen() {
   const [showPlanTrace, setShowPlanTrace] = useState(true);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [intelligenceStatus, setIntelligenceStatus] = useState<'unknown' | 'ai-powered' | 'offline'>('offline');
+  const [authStatus, setAuthStatus] = useState<{ env: string; ui_token_required: boolean; ui_token_configured: boolean; hint: string | null } | null>(null);
   const [planResult, setPlanResult] = useState<PlanResponse | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
@@ -267,7 +268,7 @@ export function ChatScreen() {
   const [executeError, setExecuteError] = useState<string | null>(null);
   const [mode, setMode] = useState<'ask' | 'orchestrate'>('ask');
 
-  // Check backend health on mount
+  // Check backend health and auth status on mount
   useEffect(() => {
     const checkHealth = async () => {
       try {
@@ -278,7 +279,16 @@ export function ChatScreen() {
         setBackendStatus('offline');
       }
     };
+    const checkAuthStatus = async () => {
+      try {
+        const status = await fetchAuthStatus();
+        setAuthStatus(status);
+      } catch (error) {
+        console.error('Auth status check failed:', error);
+      }
+    };
     checkHealth();
+    checkAuthStatus();
   }, []);
 
   /**
@@ -460,6 +470,43 @@ export function ChatScreen() {
               <>Checking...</>
             )}
           </div>
+
+          {/* Auth Status Badge */}
+          {authStatus && (
+            <div className={`group relative px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 cursor-default ${
+              !authStatus.ui_token_required
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                : authStatus.ui_token_configured
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+            }`}>
+              {!authStatus.ui_token_required ? (
+                <>
+                  <Settings className="w-3 h-3" />
+                  Dev Bypass
+                </>
+              ) : authStatus.ui_token_configured ? (
+                <>
+                  <CheckCircle className="w-3 h-3" />
+                  Auth: OK
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-3 h-3" />
+                  Auth: Missing
+                </>
+              )}
+              {/* Tooltip */}
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg max-w-xs">
+                {authStatus.hint || (
+                  authStatus.ui_token_configured 
+                    ? 'UI token authentication is configured and active.' 
+                    : 'Set QUILLO_UI_TOKEN and VITE_UI_TOKEN to enable auth.'
+                )}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Messages */}
