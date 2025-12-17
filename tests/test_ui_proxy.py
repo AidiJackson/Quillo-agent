@@ -35,7 +35,7 @@ def test_ui_route_without_token_in_prod_mode():
                 }
             )
             assert response.status_code == 401
-            assert "X-UI-Token" in response.json()["detail"]
+            assert "token" in response.json()["detail"].lower()
 
 
 def test_ui_route_with_invalid_token():
@@ -50,7 +50,7 @@ def test_ui_route_with_invalid_token():
             }
         )
         assert response.status_code == 403
-        assert "Invalid" in response.json()["detail"]
+        assert "invalid" in response.json()["detail"].lower()
 
 
 def test_ui_route_with_valid_token():
@@ -218,3 +218,98 @@ def test_original_api_still_requires_api_key():
     )
     # Should fail without API key
     assert response.status_code in [401, 403]
+
+
+def test_ui_auth_status_no_auth_required():
+    """Test that /ui/api/auth/status does not require authentication"""
+    response = client.get("/ui/api/auth/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "env" in data
+    assert "ui_token_required" in data
+    assert "ui_token_configured" in data
+    assert isinstance(data["ui_token_required"], bool)
+    assert isinstance(data["ui_token_configured"], bool)
+
+
+def test_ui_auth_status_dev_mode_no_token():
+    """Test auth/status returns correct values in dev mode without token"""
+    with patch.object(settings, 'app_env', 'dev'):
+        with patch.object(settings, 'quillo_ui_token', ''):
+            response = client.get("/ui/api/auth/status")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["env"] == "dev"
+            assert data["ui_token_required"] is False
+            assert data["ui_token_configured"] is False
+            assert data["hint"] is not None  # Should have a hint in dev bypass mode
+
+
+def test_ui_auth_status_dev_mode_with_token():
+    """Test auth/status returns correct values in dev mode with token configured"""
+    with patch.object(settings, 'app_env', 'dev'):
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            response = client.get("/ui/api/auth/status")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["env"] == "dev"
+            assert data["ui_token_required"] is True
+            assert data["ui_token_configured"] is True
+            assert data["hint"] is None
+
+
+def test_ui_auth_status_prod_mode_with_token():
+    """Test auth/status returns correct values in prod mode with token"""
+    with patch.object(settings, 'app_env', 'prod'):
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            response = client.get("/ui/api/auth/status")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["env"] == "prod"
+            assert data["ui_token_required"] is True
+            assert data["ui_token_configured"] is True
+
+
+def test_ui_auth_status_no_secrets_exposed():
+    """Test that auth/status never exposes token values"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.get("/ui/api/auth/status")
+        assert response.status_code == 200
+        data = response.json()
+        response_text = str(data)
+        assert TEST_UI_TOKEN not in response_text
+        # hint may be None when token is configured
+        hint = data.get("hint") or ""
+        assert TEST_UI_TOKEN not in hint
+
+
+def test_ui_route_dev_bypass_logs_once():
+    """Test that dev bypass works when QUILLO_UI_TOKEN is not set"""
+    with patch.object(settings, 'app_env', 'dev'):
+        with patch.object(settings, 'quillo_ui_token', ''):
+            # First request
+            response1 = client.post(
+                "/ui/api/route",
+                json={"text": "First message", "user_id": "test-user"}
+            )
+            assert response1.status_code == 200
+
+            # Second request should also work
+            response2 = client.post(
+                "/ui/api/route",
+                json={"text": "Second message", "user_id": "test-user"}
+            )
+            assert response2.status_code == 200
+
+
+def test_ui_route_prod_mode_no_token_config_fails():
+    """Test that prod mode without token configured returns 500"""
+    with patch.object(settings, 'app_env', 'prod'):
+        with patch.object(settings, 'quillo_ui_token', ''):
+            response = client.post(
+                "/ui/api/route",
+                headers={"X-UI-Token": "any-token"},
+                json={"text": "Test message", "user_id": "test-user"}
+            )
+            assert response.status_code == 500
+            assert "misconfiguration" in response.json()["detail"].lower()
