@@ -7,6 +7,9 @@ from app import app
 
 client = TestClient(app)
 
+# Test API key for authentication
+TEST_API_KEY = "dev-test-key-12345"
+
 
 def test_route_response_intent():
     """Test POST /route with response intent and defuse slot"""
@@ -15,7 +18,11 @@ def test_route_response_intent():
         "user_id": "test-user-123"
     }
 
-    response = client.post("/route", json=payload)
+    response = client.post(
+        "/route",
+        json=payload,
+        headers={"Authorization": f"Bearer {TEST_API_KEY}"}
+    )
     assert response.status_code == 200
 
     data = response.json()
@@ -39,7 +46,11 @@ def test_route_rewrite_intent():
         "user_id": "test-user-123"
     }
 
-    response = client.post("/route", json=payload)
+    response = client.post(
+        "/route",
+        json=payload,
+        headers={"Authorization": f"Bearer {TEST_API_KEY}"}
+    )
     assert response.status_code == 200
 
     data = response.json()
@@ -55,7 +66,11 @@ def test_plan_generation():
         "text": "Handle this client email and defuse conflict"
     }
 
-    response = client.post("/plan", json=payload)
+    response = client.post(
+        "/plan",
+        json=payload,
+        headers={"Authorization": f"Bearer {TEST_API_KEY}"}
+    )
     assert response.status_code == 200
 
     data = response.json()
@@ -84,7 +99,11 @@ def test_plan_with_defuse_slot():
         "slots": {"outcome": "Defuse"}
     }
 
-    response = client.post("/plan", json=payload)
+    response = client.post(
+        "/plan",
+        json=payload,
+        headers={"Authorization": f"Bearer {TEST_API_KEY}"}
+    )
     assert response.status_code == 200
 
     data = response.json()
@@ -99,5 +118,9 @@ def test_route_missing_text():
     """Test POST /route with missing text returns 422"""
     payload = {"user_id": "test-user-123"}
 
-    response = client.post("/route", json=payload)
+    response = client.post(
+        "/route",
+        json=payload,
+        headers={"Authorization": f"Bearer {TEST_API_KEY}"}
+    )
     assert response.status_code == 422  # Validation error

@@ -328,11 +328,75 @@ Create a `.env` file from `.env.example`:
 | `APP_ENV` | Environment (dev/prod) | `dev` |
 | `APP_PORT` | Server port | `8000` |
 | `DATABASE_URL` | Database connection string | `sqlite:///./quillo.db` |
+| **OpenRouter Provider** | | |
 | `OPENROUTER_API_KEY` | OpenRouter API key (optional) | - |
-| `ANTHROPIC_API_KEY` | Anthropic API key (optional) | - |
+| `OPENROUTER_BASE_URL` | OpenRouter API base URL | `https://openrouter.ai/api/v1` |
+| `OPENROUTER_FAST_MODEL` | Fast model for quick tasks | `anthropic/claude-3-haiku` |
+| `OPENROUTER_BALANCED_MODEL` | Balanced model for general use | `anthropic/claude-3.5-sonnet` |
+| `OPENROUTER_PREMIUM_MODEL` | Premium model for complex reasoning | `anthropic/claude-opus-4` |
+| **Anthropic Provider (Direct)** | | |
+| `ANTHROPIC_API_KEY` | Anthropic API key (optional, fallback) | - |
+| **Model Routing** | | |
 | `MODEL_ROUTING` | Model tier (fast/balanced/premium) | `fast` |
 
 **Note**: API keys are optional for MVP. Rule-based classification works without them.
+
+### 🤖 Configuring OpenRouter
+
+OpenRouter is the preferred LLM provider for Quillo, offering access to multiple AI models through a unified API.
+
+#### Setup Steps:
+
+1. **Get an API key** from [OpenRouter](https://openrouter.ai)
+2. **Add to `.env`**:
+   ```bash
+   OPENROUTER_API_KEY=sk-or-v1-...
+   ```
+3. **Choose your routing tier**:
+   ```bash
+   MODEL_ROUTING=fast      # Cost-optimized (Haiku)
+   MODEL_ROUTING=balanced  # Best balance (Sonnet)
+   MODEL_ROUTING=premium   # Advanced reasoning (Opus)
+   ```
+
+#### Model Routing Behavior:
+
+- **`/route`**: Uses fast model for LLM fallback when rule-based confidence < 0.6
+- **`/plan`**: Uses premium model when `MODEL_ROUTING=premium`, otherwise deterministic
+- **`/ask`**: Uses model tier specified by `MODEL_ROUTING`
+
+#### Example: Testing Model Routing
+
+```bash
+# Fast mode - uses claude-3-haiku for cost efficiency
+curl -X POST http://localhost:8000/ask \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "How should I price my SaaS product?",
+    "user_id": "demo-user"
+  }'
+
+# Response includes model used:
+# {"answer": "...", "model": "openrouter/anthropic/claude-3-haiku", "trace_id": "..."}
+```
+
+#### Custom Models:
+
+You can override default models in `.env`:
+```bash
+OPENROUTER_FAST_MODEL=openai/gpt-3.5-turbo
+OPENROUTER_BALANCED_MODEL=anthropic/claude-3.5-sonnet
+OPENROUTER_PREMIUM_MODEL=anthropic/claude-opus-4
+```
+
+See [OpenRouter Models](https://openrouter.ai/models) for available options.
+
+#### Fallback Chain:
+
+1. **OpenRouter** (if `OPENROUTER_API_KEY` is set)
+2. **Anthropic Direct** (if `ANTHROPIC_API_KEY` is set)
+3. **Offline Mode** (rule-based classification + template responses)
 
 ---
 

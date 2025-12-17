@@ -74,7 +74,20 @@ async def plan(
     trace_id = str(uuid.uuid4())
     steps: List[PlanStep] = []
 
-    # Map intent to tool steps with rationale
+    # Try LLM-based planning if MODEL_ROUTING=premium and OpenRouter is configured
+    if settings.model_routing == "premium":
+        logger.debug("Attempting LLM-based plan enrichment (premium mode)")
+        llm_steps = await llm_router.plan_reasoning(intent, slots, text)
+        if llm_steps:
+            try:
+                # Convert LLM steps to PlanStep objects
+                steps = [PlanStep(**step) for step in llm_steps]
+                logger.info(f"Using LLM-generated plan with {len(steps)} steps (trace_id={trace_id})")
+                return PlanResponse(steps=steps, trace_id=trace_id)
+            except Exception as e:
+                logger.warning(f"Failed to parse LLM steps, falling back to deterministic: {e}")
+
+    # Deterministic planning (fallback or default for non-premium)
     if intent == "response":
         steps.append(PlanStep(
             tool="response_generator",

@@ -8,13 +8,17 @@ from loguru import logger
 from sqlalchemy.orm import Session
 from ..config import settings
 from ..models import UserProfile
+from .llm import LLMRouter
 
-# Model mapping based on routing tier
+# Model mapping based on routing tier (Anthropic)
 MODEL_MAP = {
     "fast": "claude-3-haiku-20240307",
     "balanced": "claude-3-5-sonnet-20241022",
     "premium": "claude-3-5-sonnet-20241022",  # Using sonnet for now; can upgrade to opus
 }
+
+# Initialize LLM router for OpenRouter support
+llm_router = LLMRouter()
 
 # Offline response templates for common business questions
 OFFLINE_TEMPLATES = {
@@ -60,7 +64,20 @@ async def answer_business_question(
         except Exception as e:
             logger.warning(f"Failed to load user profile: {e}")
 
-    # Try LLM if API keys are configured
+    # Try OpenRouter first if configured
+    if settings.openrouter_api_key:
+        try:
+            answer = await llm_router.answer_business_question(safe_text, profile_excerpt)
+            if answer:
+                model_name = llm_router._get_openrouter_model()
+                logger.info(f"Using OpenRouter model: {model_name}")
+                return answer, f"openrouter/{model_name}"
+            else:
+                logger.warning("OpenRouter returned None; trying Anthropic fallback")
+        except Exception as e:
+            logger.error(f"OpenRouter API failed: {e}; trying Anthropic fallback")
+
+    # Try Anthropic if OpenRouter failed or not configured
     if settings.anthropic_api_key:
         try:
             answer = await _answer_with_anthropic(safe_text, profile_excerpt)
