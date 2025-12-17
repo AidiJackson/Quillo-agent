@@ -2,8 +2,10 @@
 Tests for /ask Quillopreneur advice endpoint
 """
 import pytest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from quillo_agent.main import create_app
+from quillo_agent.config import settings
 
 app = create_app()
 client = TestClient(app)
@@ -34,30 +36,31 @@ def test_ask_with_invalid_auth():
 
 def test_ask_offline_mode():
     """Test /ask returns offline response when no API keys configured"""
-    response = client.post(
-        "/ask",
-        headers={"Authorization": f"Bearer {TEST_API_KEY}"},
-        json={"text": "How do I start a business?"}
-    )
+    with patch.object(settings, 'openrouter_api_key', ''):
+        with patch.object(settings, 'anthropic_api_key', ''):
+            response = client.post(
+                "/ask",
+                headers={"Authorization": f"Bearer {TEST_API_KEY}"},
+                json={"text": "How do I start a business?"}
+            )
 
-    assert response.status_code == 200
-    data = response.json()
+            assert response.status_code == 200
+            data = response.json()
 
-    # Verify response structure
-    assert "answer" in data
-    assert "model" in data
-    assert "trace_id" in data
+            # Verify response structure
+            assert "answer" in data
+            assert "model" in data
+            assert "trace_id" in data
 
-    # Verify answer is not empty
-    assert len(data["answer"]) > 0
+            # Verify answer is not empty
+            assert len(data["answer"]) > 0
 
-    # In offline mode, model should be "offline"
-    # (This assumes no ANTHROPIC_API_KEY is set in test environment)
-    assert data["model"] in ["offline", "claude-3-haiku-20240307", "claude-3-5-sonnet-20241022"]
+            # In offline mode, model should be "template"
+            assert data["model"] == "template"
 
-    # Verify trace_id is a valid UUID format
-    assert len(data["trace_id"]) == 36  # UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-    assert data["trace_id"].count("-") == 4
+            # Verify trace_id is a valid UUID format
+            assert len(data["trace_id"]) == 36  # UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+            assert data["trace_id"].count("-") == 4
 
 
 def test_ask_with_user_id():

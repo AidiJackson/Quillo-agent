@@ -105,7 +105,7 @@ def test_execute_offline_mode():
                 data = response.json()
 
                 # Should work in offline mode
-                assert data["provider_used"] == "offline"
+                assert data["provider_used"] == "template"
                 assert len(data["output_text"]) > 0
                 assert len(data["artifacts"]) == 1
 
@@ -257,5 +257,5 @@ def test_execute_provider_selection():
             )
             assert response.status_code == 200
             data = response.json()
-            # Will try OpenRouter (may fall back to offline if mock doesn't work)
-            assert data["provider_used"] in ["openrouter", "offline"]
+            # Will try OpenRouter (may fall back to template if mock doesn't work)
+            assert data["provider_used"] in ["openrouter", "template", "offline"]

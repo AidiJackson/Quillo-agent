@@ -49,7 +49,8 @@ function displayToolName(toolId: string): string {
  */
 function isOfflineMode(providerOrModel: string | undefined): boolean {
   if (!providerOrModel) return true;
-  return providerOrModel.toLowerCase() === 'offline';
+  const lower = providerOrModel.toLowerCase();
+  return lower === 'offline' || lower === 'template';
 }
 
 /**
