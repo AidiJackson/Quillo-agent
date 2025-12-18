@@ -84,6 +84,22 @@ export interface ExecuteResponse {
   warnings: string[];
 }
 
+export interface JudgmentRequest {
+  text: string;
+  user_id?: string;
+  intent?: string;
+  context?: Record<string, any>;
+}
+
+export interface JudgmentResponse {
+  stakes: 'low' | 'medium' | 'high';
+  what_i_see: string;
+  why_it_matters: string | null;
+  recommendation: string;
+  requires_confirmation: boolean;
+  formatted_message: string;
+}
+
 /**
  * Check backend health status
  */
@@ -216,6 +232,46 @@ export async function ask(text: string, userId?: string): Promise<AskResponse> {
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Ask failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get judgment explanation for user input
+ * Works offline - no LLM required, pure heuristic assessment
+ */
+export async function judgment(
+  text: string,
+  userId?: string,
+  intent?: string,
+  context?: Record<string, any>
+): Promise<JudgmentResponse> {
+  const request: JudgmentRequest = {
+    text,
+    user_id: userId,
+    intent,
+    context,
+  };
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/judgment`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Judgment failed: ${response.status} - ${error}`);
   }
 
   return response.json();

@@ -20,10 +20,12 @@ from ..schemas import (
     AskRequest, AskResponse,
     ProfileIn, ProfileOut,
     FeedbackIn, FeedbackOut,
-    ExecuteRequest, ExecuteResponse
+    ExecuteRequest, ExecuteResponse,
+    JudgmentRequest, JudgmentResponse
 )
 from ..services import quillo, advice, memory as memory_service
 from ..services.execution import execution_service
+from ..services.judgment import assess_stakes, build_explanation, format_for_user
 
 
 # Rate limiter instance
@@ -138,6 +140,75 @@ async def ui_auth_status():
         ui_token_required=token_required,
         ui_token_configured=token_configured,
         hint=hint
+    )
+
+
+@router.post("/judgment", response_model=JudgmentResponse)
+@limiter.limit("30/minute")
+async def ui_explain_judgment(
+    request: Request,
+    payload: JudgmentRequest,
+    token: str = Depends(verify_ui_token)
+) -> JudgmentResponse:
+    """
+    UI proxy for judgment explanation.
+
+    Provides conversational explanation of what Quillo sees and recommends.
+    Works offline - no LLM required, pure heuristic-based assessment.
+    Rate limited to 30 requests per minute per IP.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: JudgmentRequest with text, user_id, intent, context
+        token: Validated UI token
+
+    Returns:
+        JudgmentResponse with stakes assessment and formatted explanation
+    """
+    logger.info(f"UI POST /judgment: user_id={payload.user_id}, intent={payload.intent}")
+
+    # Assess stakes
+    stakes = assess_stakes(payload.text)
+    logger.debug(f"Stakes assessed as: {stakes}")
+
+    # Build context observation
+    if payload.intent:
+        context = f"a request for {payload.intent}"
+    else:
+        context = "your request"
+
+    # Build recommendation based on stakes
+    if stakes == "high":
+        recommendation = (
+            "carefully draft a response, testing multiple approaches to ensure "
+            "we get the tone and message exactly right"
+        )
+    elif stakes == "medium":
+        recommendation = (
+            "create a professional response that addresses your needs while "
+            "maintaining clarity and appropriate tone"
+        )
+    else:
+        recommendation = "handle this request directly"
+
+    # Build explanation
+    explanation = build_explanation(
+        context=context,
+        stakes=stakes,
+        recommendation=recommendation,
+        intent=payload.intent
+    )
+
+    # Format for user
+    formatted_message = format_for_user(explanation)
+
+    return JudgmentResponse(
+        stakes=stakes,
+        what_i_see=explanation["what_i_see"],
+        why_it_matters=explanation.get("why_it_matters"),
+        recommendation=explanation["recommendation"],
+        requires_confirmation=explanation["requires_confirmation"],
+        formatted_message=formatted_message
     )
 
 

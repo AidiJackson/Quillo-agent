@@ -313,3 +313,77 @@ def test_ui_route_prod_mode_no_token_config_fails():
             )
             assert response.status_code == 500
             assert "misconfiguration" in response.json()["detail"].lower()
+
+
+def test_ui_judgment_with_valid_token():
+    """Test that /ui/api/judgment works with valid X-UI-Token"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/judgment",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "text": "I need to fire a team member. This is urgent.",
+                "user_id": "test-user"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "stakes" in data
+        assert "what_i_see" in data
+        assert "recommendation" in data
+        assert "requires_confirmation" in data
+        assert "formatted_message" in data
+        assert data["stakes"] in ["low", "medium", "high"]
+
+
+def test_ui_judgment_offline_mode():
+    """Test that /ui/api/judgment works in offline mode (no LLM required)"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/judgment",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "text": "Can you rewrite this paragraph?",
+                "user_id": "test-user"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stakes"] == "low"
+        assert data["requires_confirmation"] is False
+        assert data["why_it_matters"] is None
+
+
+def test_ui_judgment_high_stakes():
+    """Test that /ui/api/judgment detects high stakes correctly"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/judgment",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "text": "I need to negotiate a salary increase. This is urgent and I'm concerned.",
+                "user_id": "test-user"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stakes"] == "high"
+        assert data["requires_confirmation"] is True
+        assert data["why_it_matters"] is not None
+        assert len(data["formatted_message"]) > 0
+
+
+def test_ui_judgment_dev_mode_bypass():
+    """Test that /ui/api/judgment works in dev mode without token"""
+    with patch.object(settings, 'app_env', 'dev'):
+        with patch.object(settings, 'quillo_ui_token', ''):
+            response = client.post(
+                "/ui/api/judgment",
+                json={
+                    "text": "Help me with this email",
+                    "user_id": "test-user"
+                }
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "stakes" in data

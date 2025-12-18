@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
-import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings } from 'lucide-react';
-import { health, route, plan, ask, execute, authStatus as fetchAuthStatus, RouteResponse, PlanResponse, AskResponse, ExecuteResponse } from '@/lib/quilloApi';
+import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle } from 'lucide-react';
+import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse } from '@/lib/quilloApi';
 import {
   Dialog,
   DialogContent,
@@ -17,9 +17,10 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  judgmentResult?: JudgmentResponse;
   routeResult?: RouteResponse;
-  askResult?: AskResponse;
   executeResult?: ExecuteResponse;
+  showProceedButtons?: boolean;
 }
 
 /**
@@ -95,13 +96,13 @@ function ExecutionResultCard({ executeResult }: { executeResult: ExecuteResponse
         </div>
       )}
 
-      {/* Metadata - User-friendly labels */}
+      {/* Metadata */}
       <div className="text-xs text-muted-foreground space-y-1">
         <p><span className="font-medium">Mode:</span> {isOffline ? 'Offline' : executeResult.provider_used}</p>
         <p><span className="font-medium">Result ID:</span> {executeResult.trace_id}</p>
       </div>
 
-      {/* Steps Toggle (renamed from Step Trace) */}
+      {/* Steps Toggle */}
       {executeResult.artifacts && executeResult.artifacts.length > 0 && (
         <div>
           <button
@@ -202,10 +203,10 @@ function ConnectAIModal() {
 /**
  * Intelligence Status Badge Component
  */
-function IntelligenceStatusBadge({ 
-  status 
-}: { 
-  status: 'unknown' | 'ai-powered' | 'offline' 
+function IntelligenceStatusBadge({
+  status
+}: {
+  status: 'unknown' | 'ai-powered' | 'offline'
 }) {
   if (status === 'unknown') {
     return null;
@@ -214,7 +215,7 @@ function IntelligenceStatusBadge({
   const isAIPowered = status === 'ai-powered';
 
   return (
-    <div 
+    <div
       className={`group relative px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
         isAIPowered
           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
@@ -235,8 +236,8 @@ function IntelligenceStatusBadge({
       )}
       {/* Tooltip */}
       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
-        {isAIPowered 
-          ? 'Enhanced reasoning enabled via connected model provider.' 
+        {isAIPowered
+          ? 'Enhanced reasoning enabled via connected model provider.'
           : 'Using offline fallbacks. Connect OpenRouter/Anthropic for best results.'
         }
         <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
@@ -245,29 +246,43 @@ function IntelligenceStatusBadge({
   );
 }
 
+/**
+ * Stakes Badge Component
+ */
+function StakesBadge({ stakes }: { stakes: 'low' | 'medium' | 'high' }) {
+  const colors = {
+    low: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+    high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  };
+
+  const icons = {
+    low: CheckCircle,
+    medium: AlertCircle,
+    high: XCircle,
+  };
+
+  const Icon = icons[stakes];
+
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${colors[stakes]}`}>
+      <Icon className="w-3 h-3" />
+      Stakes: {stakes}
+    </div>
+  );
+}
+
 export function ChatScreen() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: 'Hello! I\'m Quillo, your AI Chief of Staff. How can I help you today?',
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [showPlanTrace, setShowPlanTrace] = useState(true);
+  const [showWorkflow, setShowWorkflow] = useState(true);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [intelligenceStatus, setIntelligenceStatus] = useState<'unknown' | 'ai-powered' | 'offline'>('offline');
   const [authStatus, setAuthStatus] = useState<{ env: string; ui_token_required: boolean; ui_token_configured: boolean; hint: string | null } | null>(null);
   const [planResult, setPlanResult] = useState<PlanResponse | null>(null);
-  const [planLoading, setPlanLoading] = useState(false);
-  const [planError, setPlanError] = useState<string | null>(null);
-  const [lastUserMessage, setLastUserMessage] = useState<{ text: string; routeResult?: RouteResponse } | null>(null);
-  const [askLoading, setAskLoading] = useState(false);
-  const [askError, setAskError] = useState<string | null>(null);
-  const [executeLoading, setExecuteLoading] = useState(false);
-  const [executeError, setExecuteError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'ask' | 'orchestrate'>('ask');
+  const [lastUserMessage, setLastUserMessage] = useState<{ text: string; routeResult?: RouteResponse; judgmentResult?: JudgmentResponse } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showAdvancedTools, setShowAdvancedTools] = useState(false);
 
   // Check backend health and auth status on mount
   useEffect(() => {
@@ -292,16 +307,8 @@ export function ChatScreen() {
     checkAuthStatus();
   }, []);
 
-  /**
-   * Update intelligence status based on API response
-   */
-  const updateIntelligenceStatus = (providerOrModel: string | undefined) => {
-    if (!providerOrModel) return;
-    setIntelligenceStatus(isOfflineMode(providerOrModel) ? 'offline' : 'ai-powered');
-  };
-
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || loading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -313,103 +320,109 @@ export function ChatScreen() {
     setMessages([...messages, userMessage]);
     const userInput = input;
     setInput('');
+    setLoading(true);
 
     try {
-      const routeResult = await route(userInput, 'demo');
-
-      setLastUserMessage({ text: userInput, routeResult });
+      // Call judgment layer for conversational response
+      const judgmentResult = await judgment(userInput, 'demo');
+      setLastUserMessage({ text: userInput, judgmentResult });
 
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Routed to: **${routeResult.intent}**\n\nThis request has been classified and is ready for processing.`,
+        content: judgmentResult.formatted_message,
         timestamp: new Date(),
-        routeResult,
+        judgmentResult,
+        showProceedButtons: judgmentResult.requires_confirmation,
       };
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
-      console.error('Route API failed:', error);
+      console.error('Judgment API failed:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Error: Failed to route request. ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `I'm having trouble processing your request right now. ${error instanceof Error ? error.message : 'Please try again.'}`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handlePlan = async () => {
-    if (!lastUserMessage?.routeResult) {
-      setPlanError('Please send a message first to get a route result');
-      return;
-    }
+  const handleProceed = async (messageId: string) => {
+    if (!lastUserMessage?.text) return;
 
-    setPlanLoading(true);
-    setPlanError(null);
+    setLoading(true);
 
     try {
-      const result = await plan(
-        lastUserMessage.routeResult.intent,
+      // Step 1: Route the input
+      const routeResult = await route(lastUserMessage.text, 'demo');
+
+      // Step 2: Generate plan
+      const planResult = await plan(
+        routeResult.intent,
         lastUserMessage.text,
-        lastUserMessage.routeResult.slots,
+        routeResult.slots,
         'demo'
       );
-      setPlanResult(result);
+      setPlanResult(planResult);
+      setLastUserMessage(prev => prev ? { ...prev, routeResult } : null);
+
+      // Update the message to remove proceed buttons
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === messageId
+            ? { ...msg, showProceedButtons: false, routeResult }
+            : msg
+        )
+      );
+
+      // Add workflow notification
+      const workflowMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `I've created a workflow with ${planResult.steps.length} steps. You can review it in the Workflow panel and click "Run" when ready.`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, workflowMessage]);
     } catch (error) {
-      console.error('Plan API failed:', error);
-      setPlanError(error instanceof Error ? error.message : 'Failed to generate plan');
+      console.error('Proceed failed:', error);
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `I encountered an error creating the workflow: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setPlanLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleAsk = async () => {
-    if (!input.trim()) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-      timestamp: new Date(),
-    };
-
-    setMessages([...messages, userMessage]);
-    const userInput = input;
-    setInput('');
-    setAskLoading(true);
-    setAskError(null);
-
-    try {
-      const askResult = await ask(userInput, 'demo');
-
-      // Update intelligence status based on model used
-      updateIntelligenceStatus(askResult.model);
-
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: askResult.answer,
-        timestamp: new Date(),
-        askResult,
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-    } catch (error) {
-      console.error('Ask API failed:', error);
-      setAskError(error instanceof Error ? error.message : 'Failed to get answer');
-    } finally {
-      setAskLoading(false);
-    }
+  const handleNotYet = (messageId: string) => {
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, showProceedButtons: false }
+          : msg
+      )
+    );
   };
 
   const handleExecute = async () => {
     if (!planResult || !lastUserMessage?.routeResult) {
-      setExecuteError('Please generate a plan first');
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Please generate a workflow plan first by clicking "Proceed" on a previous message.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
       return;
     }
 
-    setExecuteLoading(true);
-    setExecuteError(null);
+    setLoading(true);
 
     try {
       const executeResult = await execute(
@@ -418,11 +431,11 @@ export function ChatScreen() {
         planResult.steps,
         lastUserMessage.routeResult.slots,
         'demo',
-        true  // dry_run mode
+        true
       );
 
-      // Update intelligence status based on provider used
-      updateIntelligenceStatus(executeResult.provider_used);
+      // Update intelligence status
+      setIntelligenceStatus(isOfflineMode(executeResult.provider_used) ? 'offline' : 'ai-powered');
 
       const aiMessage: Message = {
         id: Date.now().toString(),
@@ -431,12 +444,18 @@ export function ChatScreen() {
         timestamp: new Date(),
         executeResult,
       };
-      setMessages((prev) => [...prev, aiMessage]);
+      setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
-      console.error('Execute API failed:', error);
-      setExecuteError(error instanceof Error ? error.message : 'Failed to execute plan');
+      console.error('Execute failed:', error);
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setExecuteLoading(false);
+      setLoading(false);
     }
   };
 
@@ -448,7 +467,7 @@ export function ChatScreen() {
         <div className="p-4 flex justify-end gap-2 flex-wrap">
           {/* Intelligence Status Badge */}
           <IntelligenceStatusBadge status={intelligenceStatus} />
-          
+
           {/* Backend Status Badge */}
           <div className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
             backendStatus === 'online'
@@ -500,8 +519,8 @@ export function ChatScreen() {
               {/* Tooltip */}
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg max-w-xs">
                 {authStatus.hint || (
-                  authStatus.ui_token_configured 
-                    ? 'UI token authentication is configured and active.' 
+                  authStatus.ui_token_configured
+                    ? 'UI token authentication is configured and active.'
                     : 'Set QUILLO_UI_TOKEN and VITE_UI_TOKEN to enable auth.'
                 )}
                 <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
@@ -512,6 +531,12 @@ export function ChatScreen() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {messages.length === 0 && (
+            <div className="text-center text-muted-foreground py-20">
+              <p className="text-lg font-medium mb-2">Welcome to Quillo</p>
+              <p className="text-sm">Start chatting to get conversational assistance</p>
+            </div>
+          )}
           {messages.map((message) => (
             <div
               key={message.id}
@@ -531,6 +556,33 @@ export function ChatScreen() {
                   </p>
                 </div>
 
+                {/* Stakes Badge */}
+                {message.judgmentResult && (
+                  <div className="flex items-center gap-2">
+                    <StakesBadge stakes={message.judgmentResult.stakes} />
+                  </div>
+                )}
+
+                {/* Proceed/Not Yet Buttons */}
+                {message.showProceedButtons && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleProceed(message.id)}
+                      disabled={loading}
+                      className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Proceed
+                    </button>
+                    <button
+                      onClick={() => handleNotYet(message.id)}
+                      disabled={loading}
+                      className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Not yet
+                    </button>
+                  </div>
+                )}
+
                 {/* Route Result Card */}
                 {message.routeResult && (
                   <div className="bg-accent/50 dark:bg-slate-700/50 rounded-[16px] px-4 py-3 border border-border/50 text-xs space-y-2">
@@ -543,25 +595,7 @@ export function ChatScreen() {
                       {message.routeResult.slots && Object.keys(message.routeResult.slots).length > 0 && (
                         <p><span className="font-medium">Details:</span> {JSON.stringify(message.routeResult.slots)}</p>
                       )}
-                      {message.routeResult.reasons && message.routeResult.reasons.length > 0 && (
-                        <div>
-                          <p className="font-medium">Why this classification:</p>
-                          <ul className="list-disc list-inside pl-2 text-muted-foreground">
-                            {message.routeResult.reasons.map((reason, idx) => (
-                              <li key={idx}>{reason}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
                     </div>
-                  </div>
-                )}
-
-                {/* Ask Result Metadata - User-friendly labels */}
-                {message.askResult && (
-                  <div className="text-xs text-muted-foreground space-y-0.5">
-                    <p>Mode: {isOfflineMode(message.askResult.model) ? 'Offline' : message.askResult.model}</p>
-                    <p>Result ID: {message.askResult.trace_id}</p>
                   </div>
                 )}
 
@@ -583,86 +617,34 @@ export function ChatScreen() {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Ask Quillo anything..."
-                className="flex-1 px-4 py-3 bg-input-background border border-border rounded-[16px] focus:outline-none focus:ring-2 focus:ring-ring"
+                onKeyPress={(e) => e.key === 'Enter' && !loading && handleSend()}
+                placeholder="Message Quillo..."
+                disabled={loading}
+                className="flex-1 px-4 py-3 bg-input-background border border-border rounded-[16px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
               />
               <button
                 onClick={handleSend}
-                className="px-6 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-[16px] hover:shadow-lg transition-all"
+                disabled={loading || !input.trim()}
+                className="px-6 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-[16px] hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Send className="w-5 h-5" />
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
               </button>
             </div>
 
-            {/* Mode Switch */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="inline-flex bg-accent/30 rounded-[12px] p-1">
-                  <button
-                    onClick={() => setMode('ask')}
-                    className={`px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
-                      mode === 'ask'
-                        ? 'bg-white dark:bg-slate-800 text-primary shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Ask
-                  </button>
-                  <button
-                    onClick={() => setMode('orchestrate')}
-                    className={`px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
-                      mode === 'orchestrate'
-                        ? 'bg-white dark:bg-slate-800 text-primary shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Orchestrate
-                  </button>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {mode === 'ask' ? 'Get direct entrepreneur advice.' : 'Route and plan tool steps.'}
-                </span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-2 flex-wrap">
-              {mode === 'orchestrate' && (
-                <>
-                  <button className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" />
-                    Route
-                  </button>
-                  <button
-                    onClick={handlePlan}
-                    disabled={!lastUserMessage?.routeResult || planLoading}
-                    className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Brain className="w-4 h-4" />
-                    {planLoading ? 'Planning...' : 'Plan'}
-                  </button>
-                  <button
-                    onClick={handleExecute}
-                    disabled={!planResult || executeLoading}
-                    className="px-4 py-2 bg-secondary/20 text-secondary rounded-[12px] hover:bg-secondary/30 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Play className="w-4 h-4" />
-                    {executeLoading ? 'Running...' : 'Run Plan'}
-                  </button>
-                </>
-              )}
-              {mode === 'ask' && (
-                <button
-                  onClick={handleAsk}
-                  disabled={!input.trim() || askLoading}
-                  className="px-4 py-2 bg-primary/20 text-primary rounded-[12px] hover:bg-primary/30 transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  {askLoading ? 'Asking...' : 'Ask Quillopreneur'}
-                </button>
-              )}
-              <div className="ml-auto flex gap-2">
+            {/* Advanced Tools Toggle */}
+            <div className="flex justify-between items-center">
+              <button
+                onClick={() => setShowAdvancedTools(!showAdvancedTools)}
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                {showAdvancedTools ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                Advanced Tools
+              </button>
+              <div className="flex gap-2">
                 <button className="px-3 py-2 bg-green-100 text-green-700 rounded-[12px] hover:bg-green-200 transition-all">
                   <ThumbsUp className="w-4 h-4" />
                 </button>
@@ -672,36 +654,33 @@ export function ChatScreen() {
               </div>
             </div>
 
-            {/* Ask Error Display */}
-            {askError && (
-              <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-[12px] text-xs">
-                {askError}
-              </div>
-            )}
-
-            {/* Execute Error Display */}
-            {executeError && (
-              <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-[12px] text-xs">
-                {executeError}
+            {/* Advanced Tools */}
+            {showAdvancedTools && (
+              <div className="p-3 bg-accent/20 rounded-[12px] space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">Quick Actions:</p>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={handleExecute}
+                    disabled={!planResult || loading}
+                    className="px-3 py-1.5 bg-secondary/20 text-secondary rounded-[8px] hover:bg-secondary/30 transition-all text-xs flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Play className="w-3 h-3" />
+                    Run Workflow
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Plan Panel (renamed from Plan Trace) */}
-      {showPlanTrace && (
+      {/* Workflow Panel (renamed from Plan) */}
+      {showWorkflow && (
         <GlassCard className="w-80 hidden xl:block p-6 overflow-y-auto">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Brain className="w-5 h-5 text-primary" />
-            Plan
+            Workflow
           </h3>
-
-          {planError && (
-            <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-[12px] text-xs">
-              {planError}
-            </div>
-          )}
 
           {planResult ? (
             <>
@@ -727,13 +706,22 @@ export function ChatScreen() {
               </div>
 
               <div className="mt-4 p-3 bg-secondary/10 rounded-[12px] text-xs">
-                <p className="font-medium text-secondary mb-1">Result ID</p>
+                <p className="font-medium text-secondary mb-1">Workflow ID</p>
                 <p className="text-muted-foreground font-mono break-all">{planResult.trace_id}</p>
               </div>
+
+              <button
+                onClick={handleExecute}
+                disabled={loading}
+                className="w-full mt-4 px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Play className="w-4 h-4" />
+                {loading ? 'Running...' : 'Run Workflow'}
+              </button>
             </>
           ) : (
             <div className="text-center text-muted-foreground text-sm py-8">
-              Click "Plan" to generate an execution plan
+              Workflow will appear here when you click "Proceed" on a message
             </div>
           )}
         </GlassCard>
