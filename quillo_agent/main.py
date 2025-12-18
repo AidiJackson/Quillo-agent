@@ -12,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from loguru import logger
 
 from .config import settings
-from .routers import health, route, plan, memory, feedback, ask, execute, ui_proxy
+from .routers import health, route, plan, memory, feedback, ask, execute, ui_proxy, judgment
 
 
 # Configure loguru
@@ -85,6 +85,7 @@ def create_app() -> FastAPI:
 
     # Include routers
     app.include_router(health.router)
+    app.include_router(judgment.router)
     app.include_router(route.router)
     app.include_router(plan.router)
     app.include_router(execute.router)

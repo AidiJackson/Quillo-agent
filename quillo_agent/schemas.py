@@ -104,3 +104,21 @@ class ExecuteResponse(BaseModel):
     trace_id: str = Field(..., description="Trace identifier for debugging")
     provider_used: str = Field(..., description="LLM provider used (openrouter/anthropic/offline)")
     warnings: List[str] = Field(default_factory=list, description="Any warnings during execution")
+
+
+class JudgmentRequest(BaseModel):
+    """Request for judgment explanation"""
+    text: str = Field(..., description="User input text to analyze")
+    user_id: Optional[str] = Field(None, description="User identifier")
+    intent: Optional[str] = Field(None, description="Detected intent (if already known)")
+    context: Optional[Dict[str, Any]] = Field(None, description="Additional context")
+
+
+class JudgmentResponse(BaseModel):
+    """Response from judgment layer"""
+    stakes: str = Field(..., description="Stakes level: low, medium, or high")
+    what_i_see: str = Field(..., description="Grounded observation of the situation")
+    why_it_matters: Optional[str] = Field(None, description="Reasoning (only for medium/high stakes)")
+    recommendation: str = Field(..., description="Clear action recommendation")
+    requires_confirmation: bool = Field(..., description="Whether user approval is needed")
+    formatted_message: str = Field(..., description="User-ready formatted explanation")
