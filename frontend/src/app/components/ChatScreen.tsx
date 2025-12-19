@@ -424,6 +424,23 @@ export function ChatScreen() {
 
     setLoading(true);
 
+    // Track whether reassurance message was already sent
+    let reassuranceSent = false;
+
+    // Start a timer for reassurance message (12 seconds)
+    const reassuranceTimer = setTimeout(() => {
+      if (!reassuranceSent) {
+        reassuranceSent = true;
+        const reassuranceMessage: Message = {
+          id: Date.now().toString() + '-reassurance',
+          role: 'assistant',
+          content: 'Got it — I\'m working through this now. This one needs a careful pass.',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, reassuranceMessage]);
+      }
+    }, 12000); // 12 seconds
+
     try {
       const executeResult = await execute(
         lastUserMessage.text,
@@ -433,6 +450,9 @@ export function ChatScreen() {
         'demo',
         true
       );
+
+      // Clear the reassurance timer if execution completes before 12s
+      clearTimeout(reassuranceTimer);
 
       // Update intelligence status
       setIntelligenceStatus(isOfflineMode(executeResult.provider_used) ? 'offline' : 'ai-powered');
@@ -446,6 +466,9 @@ export function ChatScreen() {
       };
       setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
+      // Clear the reassurance timer on error
+      clearTimeout(reassuranceTimer);
+
       console.error('Execute failed:', error);
       const errorMessage: Message = {
         id: Date.now().toString(),
