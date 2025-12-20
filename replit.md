@@ -151,6 +151,12 @@ alembic revision --autogenerate -m "description"
 - Tables: user_profiles, feedback_logs
 
 ## Recent Changes
+- **2025-12-20**: Live/Fallback Badge for Multi-Agent Conversations
+  - Added `fallback_reason` field to track why OpenRouter calls failed (timeout, rate_limited, http_error, exception, key_missing)
+  - Multi-agent transcript now shows a badge above the first message: "Live" (green) when using OpenRouter, or "Fallback" (amber) for template mode
+  - Fallback badge includes explanatory text and a "Retry live" button
+  - Tests updated to assert fallback_reason behavior (12 tests passing)
+
 - **2025-12-17**: UI Authentication and Auth Status Display
   - Added `/ui/api/auth/status` endpoint for debugging auth configuration
   - Implemented constant-time token comparison for security
