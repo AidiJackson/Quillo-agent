@@ -97,6 +97,23 @@ async def answer_business_question(
     return OFFLINE_TEMPLATES["default"], "template"
 
 
+def _get_system_prompt() -> str:
+    """
+    Get the appropriate system prompt based on RAW_CHAT_MODE setting.
+
+    Returns:
+        System prompt string
+    """
+    if settings.raw_chat_mode:
+        # Raw mode: minimal, ChatGPT-like prompt
+        return """You are Quillo, a helpful AI assistant. Provide clear, direct answers to user questions."""
+    else:
+        # Advanced mode: Quillopreneur specialist
+        return """You are Quillopreneur, an expert business advisor specializing in entrepreneurship,
+strategy, and growth. Provide actionable, practical advice based on proven business principles.
+Be concise, specific, and helpful. Focus on the user's question."""
+
+
 async def _answer_with_anthropic(text: str, profile_excerpt: str) -> str:
     """
     Generate business advice using Anthropic API.
@@ -108,10 +125,8 @@ async def _answer_with_anthropic(text: str, profile_excerpt: str) -> str:
     Returns:
         Business advice answer
     """
-    # System message to prevent prompt injection
-    system_message = """You are Quillopreneur, an expert business advisor specializing in entrepreneurship,
-strategy, and growth. Provide actionable, practical advice based on proven business principles.
-Be concise, specific, and helpful. Focus on the user's question."""
+    # System message based on mode
+    system_message = _get_system_prompt()
 
     # User message with optional profile context
     user_message = text

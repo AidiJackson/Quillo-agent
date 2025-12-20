@@ -9,14 +9,26 @@ Verifies proactive agent suggestion logic:
 - Decline path → no agent added
 - Accept path → multi-agent endpoint used
 - No chain-of-thought leakage
+
+Note: These tests run with RAW_CHAT_MODE=False (advanced mode) via fixture.
+Raw mode behavior is tested separately in test_raw_chat_mode.py.
 """
 import pytest
+from unittest.mock import patch
 from quillo_agent.services.agent_suggestion import (
     should_suggest_agents,
     build_agent_suggestion_message,
     detect_ambiguity
 )
 from quillo_agent.services.interaction_contract import enforce_contract
+from quillo_agent.config import settings
+
+
+@pytest.fixture(autouse=True)
+def disable_raw_chat_mode():
+    """Disable raw chat mode for all tests in this module (test advanced mode features)."""
+    with patch.object(settings, 'raw_chat_mode', False):
+        yield
 
 
 class TestShouldSuggestAgents:

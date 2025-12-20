@@ -260,6 +260,22 @@ Respond with ONLY this JSON format (no markdown, no other text):
             logger.error(f"OpenRouter request failed: {e}")
             return None
 
+    def _get_system_prompt(self) -> str:
+        """
+        Get the appropriate system prompt based on RAW_CHAT_MODE setting.
+
+        Returns:
+            System prompt string
+        """
+        if settings.raw_chat_mode:
+            # Raw mode: minimal, ChatGPT-like prompt
+            return """You are Quillo, a helpful AI assistant. Provide clear, direct answers to user questions."""
+        else:
+            # Advanced mode: Quillopreneur specialist
+            return """You are Quillopreneur, an expert business advisor specializing in entrepreneurship,
+strategy, and growth. Provide actionable, practical advice based on proven business principles.
+Be concise, specific, and helpful. Focus on the user's question."""
+
     async def answer_business_question(
         self, text: str, profile_excerpt: str = ""
     ) -> Optional[str]:
@@ -282,10 +298,8 @@ Respond with ONLY this JSON format (no markdown, no other text):
         safe_text = self._truncate_user_input(text)
         safe_profile = self._truncate_user_input(profile_excerpt, max_chars=300)
 
-        # System message to prevent prompt injection
-        system_message = """You are Quillopreneur, an expert business advisor specializing in entrepreneurship,
-strategy, and growth. Provide actionable, practical advice based on proven business principles.
-Be concise, specific, and helpful. Focus on the user's question."""
+        # System message based on mode
+        system_message = self._get_system_prompt()
 
         # User message with optional profile context
         user_message = safe_text

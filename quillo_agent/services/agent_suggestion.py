@@ -9,9 +9,12 @@ Rules:
 - No suggestion for: grammar, simple rewrites, factual lookups
 - Natural, calm, professional tone
 - No chain-of-thought or internal scoring
+- RAW_CHAT_MODE disables all automatic suggestions
 """
 import random
 from loguru import logger
+
+from ..config import settings
 
 
 def should_suggest_agents(
@@ -38,6 +41,11 @@ def should_suggest_agents(
     Returns:
         True if agents should be suggested, False otherwise
     """
+    # In raw chat mode, never suggest agents automatically
+    if settings.raw_chat_mode:
+        logger.debug("No agent suggestion: RAW_CHAT_MODE enabled")
+        return False
+
     # Never suggest for simple tasks
     simple_intents = {"grammar", "rewrite", "typo", "lookup", "factual"}
     if intent.lower() in simple_intents:

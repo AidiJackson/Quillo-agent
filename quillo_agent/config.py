@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Multi-agent prompt mode
     multi_agent_prompt_mode: str = "raw"  # raw|tuned
 
+    # Raw chat mode (ChatGPT-like behavior)
+    raw_chat_mode: bool = True  # True = direct LLM, no auto-suggestions
+
     # Security settings
     quillo_api_key: str = ""
     quillo_ui_token: str = ""  # UI-facing token for frontend proxy (dev-safe)

@@ -14,11 +14,13 @@ CONTRACT RULES:
 - Ask clarifying questions (1-3 max) only when needed to proceed safely
 - For missing integrations: acknowledge gap, offer closest available workflow
 - Proactive agent suggestions (v1): suggest additional agents when helpful, user must consent
+- RAW_CHAT_MODE: disables suggestions, direct LLM responses only
 """
 from enum import Enum
 from typing import Literal, Optional, Dict, Any, List
 from loguru import logger
 
+from ..config import settings
 from .agent_suggestion import (
     should_suggest_agents,
     build_agent_suggestion_message,
