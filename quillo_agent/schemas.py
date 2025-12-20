@@ -122,3 +122,8 @@ class JudgmentResponse(BaseModel):
     recommendation: str = Field(..., description="Clear action recommendation")
     requires_confirmation: bool = Field(..., description="Whether user approval is needed")
     formatted_message: str = Field(..., description="User-ready formatted explanation")
+    # Interaction Contract v1 fields
+    mode: Optional[str] = Field(None, description="Contract mode: answer, clarify, confirm_required, or cannot_do_yet")
+    assistant_message: Optional[str] = Field(None, description="Contract-compliant conversational message")
+    questions: Optional[List[str]] = Field(None, description="Clarifying questions (if mode=clarify)")
+    suggested_next_step: Optional[str] = Field(None, description="Next step suggestion (if mode=cannot_do_yet)")

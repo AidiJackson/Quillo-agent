@@ -2,6 +2,7 @@
 UI Proxy (BFF) router - Frontend-facing endpoints without API key exposure
 """
 import hmac
+from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -26,6 +27,7 @@ from ..schemas import (
 from ..services import quillo, advice, memory as memory_service
 from ..services.execution import execution_service
 from ..services.judgment import assess_stakes, build_explanation, format_for_user
+from ..services.interaction_contract import enforce_contract, ActionIntent
 
 
 # Rate limiter instance
@@ -155,6 +157,7 @@ async def ui_explain_judgment(
 
     Provides conversational explanation of what Quillo sees and recommends.
     Works offline - no LLM required, pure heuristic-based assessment.
+    Now enforces Interaction Contract v1 for consistent conversational behavior.
     Rate limited to 30 requests per minute per IP.
 
     Args:
@@ -171,13 +174,33 @@ async def ui_explain_judgment(
     stakes = assess_stakes(payload.text)
     logger.debug(f"Stakes assessed as: {stakes}")
 
-    # Build context observation
+    # Determine action intent based on text and context
+    action_intent = _determine_action_intent(payload.text, payload.intent)
+    logger.debug(f"Action intent determined as: {action_intent}")
+
+    # Check integration availability (for MVP, none are available yet)
+    has_integrations = {
+        "email": False,
+        "calendar": False,
+        "crm": False
+    }
+
+    # Enforce interaction contract
+    contract_response = enforce_contract(
+        message=payload.text,
+        stakes=stakes,
+        intent=action_intent.value,
+        has_integrations=has_integrations
+    )
+    logger.debug(f"Contract response mode: {contract_response['mode']}")
+
+    # Build context observation (legacy behavior for backward compatibility)
     if payload.intent:
         context = f"a request for {payload.intent}"
     else:
         context = "your request"
 
-    # Build recommendation based on stakes
+    # Build recommendation based on stakes (legacy)
     if stakes == "high":
         recommendation = (
             "carefully draft a response, testing multiple approaches to ensure "
@@ -191,7 +214,7 @@ async def ui_explain_judgment(
     else:
         recommendation = "handle this request directly"
 
-    # Build explanation
+    # Build explanation (legacy)
     explanation = build_explanation(
         context=context,
         stakes=stakes,
@@ -199,17 +222,62 @@ async def ui_explain_judgment(
         intent=payload.intent
     )
 
-    # Format for user
+    # Format for user (legacy)
     formatted_message = format_for_user(explanation)
 
+    # Return combined response (legacy fields + contract fields)
     return JudgmentResponse(
         stakes=stakes,
         what_i_see=explanation["what_i_see"],
         why_it_matters=explanation.get("why_it_matters"),
         recommendation=explanation["recommendation"],
-        requires_confirmation=explanation["requires_confirmation"],
-        formatted_message=formatted_message
+        requires_confirmation=contract_response["requires_confirmation"],
+        formatted_message=formatted_message,
+        # Contract v1 fields
+        mode=contract_response["mode"],
+        assistant_message=contract_response["assistant_message"],
+        questions=contract_response.get("questions"),
+        suggested_next_step=contract_response.get("suggested_next_step")
     )
+
+
+def _determine_action_intent(text: str, intent_hint: Optional[str] = None) -> ActionIntent:
+    """
+    Determine the action intent from user text.
+
+    Args:
+        text: User input text
+        intent_hint: Optional intent hint from routing
+
+    Returns:
+        ActionIntent enum value
+    """
+    text_lower = text.lower()
+
+    # Check for external integration requests
+    external_keywords = [
+        "inbox", "email", "emails", "calendar", "schedule", "crm"
+    ]
+    if any(keyword in text_lower for keyword in external_keywords):
+        return ActionIntent.EXTERNAL_INTEGRATION
+
+    # Check for execution intent
+    execution_keywords = [
+        "send", "create", "draft", "write", "make", "build",
+        "schedule", "book", "delete", "update", "fix"
+    ]
+    if any(text_lower.startswith(keyword) for keyword in execution_keywords):
+        return ActionIntent.EXECUTE
+
+    # Check for planning intent
+    planning_keywords = [
+        "plan", "strategy", "approach", "how should i", "what's the best way"
+    ]
+    if any(keyword in text_lower for keyword in planning_keywords):
+        return ActionIntent.PLAN
+
+    # Default to chat only (questions, informational)
+    return ActionIntent.CHAT_ONLY
 
 
 @router.post("/route", response_model=RouteResponse)

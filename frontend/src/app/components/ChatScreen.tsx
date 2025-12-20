@@ -327,10 +327,24 @@ export function ChatScreen() {
       const judgmentResult = await judgment(userInput, 'demo');
       setLastUserMessage({ text: userInput, judgmentResult });
 
+      // Use contract v1 fields if available, otherwise fall back to legacy
+      let messageContent = judgmentResult.assistant_message || judgmentResult.formatted_message;
+
+      // Add questions if present (contract v1)
+      if (judgmentResult.questions && judgmentResult.questions.length > 0) {
+        const questionsList = judgmentResult.questions.map(q => `• ${q}`).join('\n');
+        messageContent = `${messageContent}\n\n${questionsList}`;
+      }
+
+      // Add suggested next step if present (contract v1)
+      if (judgmentResult.suggested_next_step) {
+        messageContent = `${messageContent}\n\nNext step: ${judgmentResult.suggested_next_step}`;
+      }
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: judgmentResult.formatted_message,
+        content: messageContent,
         timestamp: new Date(),
         judgmentResult,
         showProceedButtons: judgmentResult.requires_confirmation,

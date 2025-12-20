@@ -98,6 +98,11 @@ export interface JudgmentResponse {
   recommendation: string;
   requires_confirmation: boolean;
   formatted_message: string;
+  // Interaction Contract v1 fields
+  mode?: 'answer' | 'clarify' | 'confirm_required' | 'cannot_do_yet';
+  assistant_message?: string;
+  questions?: string[];
+  suggested_next_step?: string;
 }
 
 /**
