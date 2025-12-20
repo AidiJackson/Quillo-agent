@@ -69,7 +69,26 @@ async def answer_business_question(
         logger.info("Using offline business advice template (no API keys configured)")
         return OFFLINE_TEMPLATES["default"], "template"
 
-    # Try OpenRouter first if configured
+    # In raw chat mode, ONLY use OpenRouter with chat model (no Anthropic fallback)
+    if settings.raw_chat_mode:
+        if not settings.openrouter_api_key:
+            logger.warning("Raw chat mode enabled but OpenRouter not configured")
+            return OFFLINE_TEMPLATES["default"], "template"
+
+        try:
+            answer = await llm_router.answer_business_question(safe_text, profile_excerpt)
+            if answer:
+                model_name = llm_router._get_openrouter_model(for_chat=True)
+                logger.info(f"Using OpenRouter model (raw mode): {model_name}")
+                return answer, f"openrouter/{model_name}"
+            else:
+                logger.warning("OpenRouter returned None in raw mode; using offline template")
+                return OFFLINE_TEMPLATES["default"], "template"
+        except Exception as e:
+            logger.error(f"OpenRouter API failed in raw mode: {e}; using offline template")
+            return OFFLINE_TEMPLATES["default"], "template"
+
+    # Advanced mode: Try OpenRouter first if configured
     if settings.openrouter_api_key:
         try:
             answer = await llm_router.answer_business_question(safe_text, profile_excerpt)

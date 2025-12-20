@@ -224,3 +224,81 @@ class TestRawChatModeNoTemplateResponses:
             # In raw mode, we rely on the LLM prompt to avoid templates
             # Just verify we got a response
             assert len(response["assistant_message"]) > 0
+
+
+class TestRawChatModeAskEndpoint:
+    """Test that /ui/api/ask endpoint uses correct model in raw mode"""
+
+    @pytest.mark.anyio
+    async def test_ask_endpoint_uses_chat_model_in_raw_mode(self):
+        """
+        Regression test: /ui/api/ask should use chat model in raw mode, not Haiku.
+
+        This test ensures that when raw_chat_mode=True, the /ask endpoint uses
+        settings.openrouter_chat_model (e.g., openai/gpt-4o-mini) instead of
+        falling back to Anthropic's Haiku model.
+        """
+        from unittest.mock import AsyncMock
+        import httpx
+        from quillo_agent.services import advice
+
+        with patch.object(settings, 'raw_chat_mode', True):
+            with patch.object(settings, 'openrouter_api_key', 'test-key'):
+                with patch.object(settings, 'openrouter_chat_model', 'openai/gpt-4o-mini'):
+                    # Mock OpenRouter response
+                    mock_request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+                    mock_response = httpx.Response(
+                        status_code=200,
+                        json={
+                            "choices": [
+                                {"message": {"content": "Here's advice about starting a business..."}}
+                            ]
+                        },
+                        request=mock_request
+                    )
+
+                    with patch('httpx.AsyncClient.post', new_callable=AsyncMock, return_value=mock_response):
+                        # Call the service layer directly
+                        answer, model = await advice.answer_business_question(
+                            text="How do I start a business?",
+                            user_id="test-user"
+                        )
+
+                        # Assertions
+                        assert answer is not None
+                        assert len(answer) > 0
+
+                        # CRITICAL: Model should be the chat model, NOT Haiku
+                        assert model == "openrouter/openai/gpt-4o-mini"
+                        assert "haiku" not in model.lower()
+                        assert "claude-3-haiku" not in model
+
+    @pytest.mark.anyio
+    async def test_ask_endpoint_no_anthropic_fallback_in_raw_mode(self):
+        """
+        Test that raw mode doesn't fall back to Anthropic when OpenRouter fails.
+
+        When raw_chat_mode=True, if OpenRouter fails or returns None, we should
+        use the offline template instead of falling back to Anthropic (which would
+        use Haiku in fast mode).
+        """
+        from unittest.mock import AsyncMock
+        from quillo_agent.services import advice
+
+        with patch.object(settings, 'raw_chat_mode', True):
+            with patch.object(settings, 'openrouter_api_key', 'test-key'):
+                with patch.object(settings, 'anthropic_api_key', 'test-anthropic-key'):
+                    with patch.object(settings, 'openrouter_chat_model', 'openai/gpt-4o-mini'):
+                        # Mock OpenRouter to return None (simulating failure)
+                        with patch('quillo_agent.services.llm.LLMRouter.answer_business_question',
+                                   new_callable=AsyncMock, return_value=None):
+                            # Call the service layer
+                            answer, model = await advice.answer_business_question(
+                                text="How do I start a business?",
+                                user_id="test-user"
+                            )
+
+                            # Should fall back to template, NOT Anthropic
+                            assert model == "template"
+                            assert "haiku" not in model.lower()
+                            assert "claude" not in model.lower()
