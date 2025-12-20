@@ -10,8 +10,8 @@ from quillo_agent.services.llm import LLMRouter
 from quillo_agent.config import settings
 
 
-# Configure pytest-anyio to use only asyncio backend
-pytestmark = pytest.mark.anyio(backends=['asyncio'])
+# Configure tests to run with anyio (backend configured in conftest.py)
+pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture
