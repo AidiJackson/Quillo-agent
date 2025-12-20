@@ -424,6 +424,67 @@ export function ChatScreen() {
     );
   };
 
+  const handleBringInAgents = async (messageId: string) => {
+    // Find the message and get the original user text
+    const message = messages.find(msg => msg.id === messageId);
+    if (!message) return;
+
+    // Find the original user message (should be right before this assistant message)
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
+    if (!userMessage || userMessage.role !== 'user') return;
+
+    // Hide the suggestion buttons
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, showProceedButtons: false }
+          : msg
+      )
+    );
+
+    setLoading(true);
+
+    try {
+      // Call multi-agent chat with the original user message
+      const multiAgentResult = await multiAgent(userMessage.content, 'demo');
+
+      // Add each agent message to the chat
+      multiAgentResult.messages.forEach((msg, idx) => {
+        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : 'Grok';
+        const agentMessage: Message = {
+          id: (Date.now() + idx + 1).toString(),
+          role: 'assistant',
+          content: `**${agentLabel}:** ${msg.content}`,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, agentMessage]);
+      });
+    } catch (error) {
+      console.error('Multi-agent chat failed:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `I encountered an error bringing in other perspectives: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleContinueSolo = (messageId: string) => {
+    // Just hide the suggestion buttons and continue normally
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, showProceedButtons: false }
+          : msg
+      )
+    );
+  };
+
   const handleMultiAgent = async () => {
     if (!input.trim() || loading) return;
 
@@ -645,7 +706,7 @@ export function ChatScreen() {
                 )}
 
                 {/* Proceed/Not Yet Buttons */}
-                {message.showProceedButtons && (
+                {message.showProceedButtons && message.judgmentResult?.suggested_next_step !== 'add_agents' && (
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleProceed(message.id)}
@@ -660,6 +721,26 @@ export function ChatScreen() {
                       className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Not yet
+                    </button>
+                  </div>
+                )}
+
+                {/* Agent Suggestion Buttons (v1) */}
+                {message.judgmentResult?.suggested_next_step === 'add_agents' && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleBringInAgents(message.id)}
+                      disabled={loading}
+                      className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Bring in a second opinion
+                    </button>
+                    <button
+                      onClick={() => handleContinueSolo(message.id)}
+                      disabled={loading}
+                      className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Continue with you
                     </button>
                   </div>
                 )}

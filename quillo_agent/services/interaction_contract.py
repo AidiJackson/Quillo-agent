@@ -13,10 +13,17 @@ CONTRACT RULES:
   - medium/high stakes: ask for confirmation before executing
 - Ask clarifying questions (1-3 max) only when needed to proceed safely
 - For missing integrations: acknowledge gap, offer closest available workflow
+- Proactive agent suggestions (v1): suggest additional agents when helpful, user must consent
 """
 from enum import Enum
 from typing import Literal, Optional, Dict, Any, List
 from loguru import logger
+
+from .agent_suggestion import (
+    should_suggest_agents,
+    build_agent_suggestion_message,
+    detect_ambiguity
+)
 
 
 class Stakes(str, Enum):
@@ -121,10 +128,23 @@ def enforce_contract(
     # Build the response based on stakes and intent
     if stakes_level == Stakes.LOW:
         # Low stakes: proceed automatically
-        return _build_answer_response(message, action_intent, requires_confirmation=False)
+        response = _build_answer_response(message, action_intent, requires_confirmation=False)
     else:
         # Medium/high stakes: require confirmation
-        return _build_confirm_required_response(message, action_intent, stakes_level)
+        response = _build_confirm_required_response(message, action_intent, stakes_level)
+
+    # Check if we should suggest bringing in additional agents (v1)
+    # Only suggest if not already in clarify/cannot_do_yet mode
+    ambiguity = detect_ambiguity(message, intent)
+    if should_suggest_agents(stakes, intent, ambiguity, message):
+        # Append suggestion to assistant message
+        suggestion = build_agent_suggestion_message(message)
+        response["assistant_message"] = f"{response['assistant_message']}\n\n{suggestion}"
+        response["suggested_next_step"] = "add_agents"
+        response["requires_confirmation"] = True
+        logger.debug("Agent suggestion added to response")
+
+    return response
 
 
 def _detect_needed_integration(message: str) -> Optional[str]:

@@ -126,7 +126,7 @@ class JudgmentResponse(BaseModel):
     mode: Optional[str] = Field(None, description="Contract mode: answer, clarify, confirm_required, or cannot_do_yet")
     assistant_message: Optional[str] = Field(None, description="Contract-compliant conversational message")
     questions: Optional[List[str]] = Field(None, description="Clarifying questions (if mode=clarify)")
-    suggested_next_step: Optional[str] = Field(None, description="Next step suggestion (if mode=cannot_do_yet)")
+    suggested_next_step: Optional[str] = Field(None, description="Next step suggestion (values: 'add_agents' for multi-agent suggestion, or custom text for cannot_do_yet mode)")
 
 
 class MultiAgentMessage(BaseModel):
