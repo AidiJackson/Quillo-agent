@@ -23,7 +23,7 @@ from ..config import settings
 CLAUDE_MODEL = "anthropic/claude-3.5-sonnet"
 GROK_MODEL = "x-ai/grok-2-1212"  # Grok 2
 GEMINI_MODEL = settings.openrouter_gemini_model
-PRIMARY_MODEL = settings.openrouter_balanced_model
+PRIMARY_MODEL = settings.openrouter_chat_model  # GPT-4o-mini (or GPT-4o)
 
 
 def _get_agent_prompt(agent_name: str, mode: str = "raw") -> str:
