@@ -598,7 +598,7 @@ export function ChatScreen() {
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
-        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'grok' ? 'Grok' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
+        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'deepseek' ? 'DeepSeek' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
         const agentMessage: Message = {
           id: (Date.now() + idx + 1).toString(),
           role: 'assistant',
@@ -686,7 +686,7 @@ export function ChatScreen() {
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
-        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'grok' ? 'Grok' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
+        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'deepseek' ? 'DeepSeek' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
         const agentMessage: Message = {
           id: (Date.now() + idx + 1).toString(),
           role: 'assistant',

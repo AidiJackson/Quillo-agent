@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Multi-agent specific models (env-configurable for reliability)
     openrouter_claude_agent_model: str = "anthropic/claude-3.5-sonnet"
-    openrouter_grok_agent_model: str = "x-ai/grok-beta"  # Grok Beta (widely available)
+    openrouter_challenger_agent_model: str = "deepseek/deepseek-chat"  # DeepSeek V3 (challenger perspective)
     openrouter_gemini_agent_model: str = "google/gemini-2.5-flash"
 
     # Anthropic LLM provider (direct)

@@ -172,7 +172,7 @@ class ModelStatusResponse(BaseModel):
     """Model status response (diagnostic, no secrets)"""
     raw_chat_model: str
     claude_agent_model: str
-    grok_agent_model: str
+    challenger_agent_model: str
     gemini_agent_model: str
     primary_synthesis_model: str
 
@@ -193,7 +193,7 @@ async def ui_model_status():
     return ModelStatusResponse(
         raw_chat_model=settings.openrouter_chat_model,
         claude_agent_model=settings.openrouter_claude_agent_model,
-        grok_agent_model=settings.openrouter_grok_agent_model,
+        challenger_agent_model=settings.openrouter_challenger_agent_model,
         gemini_agent_model=settings.openrouter_gemini_agent_model,
         primary_synthesis_model=settings.openrouter_chat_model
     )

@@ -4,7 +4,7 @@ Multi-Agent Chat Service (v0.1)
 Multi-agent conversation with 4 peer agents:
 - Primary (Quillo) frames
 - Claude gives perspective
-- Grok gives contrasting perspective
+- DeepSeek gives contrasting/challenger perspective
 - Gemini gives alternative angle / structured take
 - Primary (Quillo) synthesizes
 
@@ -21,7 +21,7 @@ from ..config import settings
 
 # Model IDs for multi-agent chat (env-configurable for reliability)
 CLAUDE_MODEL = settings.openrouter_claude_agent_model
-GROK_MODEL = settings.openrouter_grok_agent_model
+CHALLENGER_MODEL = settings.openrouter_challenger_agent_model  # DeepSeek (replaces Grok)
 GEMINI_MODEL = settings.openrouter_gemini_agent_model
 PRIMARY_MODEL = settings.openrouter_chat_model  # GPT-4o-mini (or GPT-4o)
 
@@ -31,7 +31,7 @@ def _get_agent_prompt(agent_name: str, mode: str = "raw") -> str:
     Get system prompt for an agent based on the prompt mode.
 
     Args:
-        agent_name: Name of agent ("claude", "grok", "gemini", "primary_frame", "primary_synth")
+        agent_name: Name of agent ("claude", "deepseek", "gemini", "primary_frame", "primary_synth")
         mode: Prompt mode ("raw" or "tuned")
 
     Returns:
@@ -45,7 +45,7 @@ def _get_agent_prompt(agent_name: str, mode: str = "raw") -> str:
 Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
             "claude": """You are Claude. Reply naturally in your own style.
 Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
-            "grok": """You are Grok. Reply naturally in your own style.
+            "deepseek": """You are DeepSeek. Reply naturally in your own style.
 Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
             "gemini": """You are Gemini. Reply naturally in your own style.
 Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
@@ -77,7 +77,7 @@ async def run_multi_agent_chat(
     Args:
         text: User's input text
         user_id: Optional user identifier
-        agents: List of agent names (default: ["primary", "claude", "grok"])
+        agents: List of agent names (default: ["primary", "claude", "deepseek"])
         trace_id: Optional trace ID for logging
 
     Returns:
@@ -87,7 +87,7 @@ async def run_multi_agent_chat(
         - fallback_reason: None if live, or reason string if template fallback
         - peers_unavailable: True if Quillo succeeded but all peer agents failed
     """
-    agents = agents or ["primary", "claude", "grok"]
+    agents = agents or ["primary", "claude", "deepseek"]
     logger.info(f"Multi-agent chat: user_id={user_id}, agents={agents}, trace_id={trace_id}")
 
     # Check if OpenRouter is available
@@ -100,7 +100,7 @@ async def run_multi_agent_chat(
     try:
         messages = await _generate_openrouter_transcript(text)
         # Determine if all peers failed
-        live_peer_count = sum(1 for m in messages if m.get("agent") in ["claude", "grok", "gemini"] and m.get("live", True))
+        live_peer_count = sum(1 for m in messages if m.get("agent") in ["claude", "deepseek", "gemini"] and m.get("live", True))
         peers_unavailable = (live_peer_count == 0)
         return messages, "openrouter", None, peers_unavailable
     except httpx.TimeoutException as e:
@@ -141,7 +141,7 @@ def _generate_template_transcript(text: str) -> list[dict]:
         {
             "role": "assistant",
             "agent": "quillo",
-            "content": f"Got it. Let me bring in a few perspectives on this. We'll hear from Claude, Grok, and Gemini.",
+            "content": f"Got it. Let me bring in a few perspectives on this. We'll hear from Claude, DeepSeek, and Gemini.",
             "model_id": None,
             "live": True,
             "unavailable_reason": None
@@ -156,7 +156,7 @@ def _generate_template_transcript(text: str) -> list[dict]:
         },
         {
             "role": "assistant",
-            "agent": "grok",
+            "agent": "deepseek",
             "content": f"Hold up—before you get too comfortable with that, ask yourself: what if the opposite is true? Sometimes the 'thoughtful' path is just procrastination with better PR. What's the risk of moving fast and adjusting later versus overthinking and missing the window?",
             "model_id": None,
             "live": True,
@@ -165,7 +165,7 @@ def _generate_template_transcript(text: str) -> list[dict]:
         {
             "role": "assistant",
             "agent": "gemini",
-            "content": f"Here's a structured view: break this into phases. First, validate your core assumption. Second, test with a small pilot. Third, scale what works. This approach gives you Claude's thoughtfulness without Grok's risk of paralysis.",
+            "content": f"Here's a structured view: break this into phases. First, validate your core assumption. Second, test with a small pilot. Third, scale what works. This approach gives you Claude's thoughtfulness without DeepSeek's risk of paralysis.",
             "model_id": None,
             "live": True,
             "unavailable_reason": None
@@ -173,7 +173,7 @@ def _generate_template_transcript(text: str) -> list[dict]:
         {
             "role": "assistant",
             "agent": "quillo",
-            "content": f"All three perspectives add value. My recommendation: use Gemini's phased approach as your framework, with Claude's long-term lens and Grok's urgency check at each phase. Quick question: what's the smallest pilot you could run to validate this?",
+            "content": f"All three perspectives add value. My recommendation: use Gemini's phased approach as your framework, with Claude's long-term lens and DeepSeek's urgency check at each phase. Quick question: what's the smallest pilot you could run to validate this?",
             "model_id": None,
             "live": True,
             "unavailable_reason": None
@@ -237,30 +237,30 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
             "unavailable_reason": claude_reason
         })
 
-    # Message 3: Grok perspective (safe call)
-    grok_content, grok_reason = await _call_openrouter_safe(
-        model=GROK_MODEL,
-        system_prompt=_get_agent_prompt("grok", mode=prompt_mode),
+    # Message 3: DeepSeek perspective (safe call)
+    deepseek_content, deepseek_reason = await _call_openrouter_safe(
+        model=CHALLENGER_MODEL,
+        system_prompt=_get_agent_prompt("deepseek", mode=prompt_mode),
         user_message=text
     )
-    if grok_content:
-        peer_responses["grok"] = grok_content
+    if deepseek_content:
+        peer_responses["deepseek"] = deepseek_content
         messages.append({
             "role": "assistant",
-            "agent": "grok",
-            "content": grok_content,
-            "model_id": GROK_MODEL,
+            "agent": "deepseek",
+            "content": deepseek_content,
+            "model_id": CHALLENGER_MODEL,
             "live": True,
             "unavailable_reason": None
         })
     else:
         messages.append({
             "role": "assistant",
-            "agent": "grok",
-            "content": _generate_unavailable_message("grok", grok_reason),
-            "model_id": GROK_MODEL,
+            "agent": "deepseek",
+            "content": _generate_unavailable_message("deepseek", deepseek_reason),
+            "model_id": CHALLENGER_MODEL,
             "live": False,
-            "unavailable_reason": grok_reason
+            "unavailable_reason": deepseek_reason
         })
 
     # Message 4: Gemini perspective (safe call)
@@ -378,8 +378,8 @@ def _build_synthesis_prompt(text: str, peer_responses: dict[str, Optional[str]])
 
     if peer_responses.get("claude"):
         available.append(f"Claude's perspective: {peer_responses['claude']}")
-    if peer_responses.get("grok"):
-        available.append(f"Grok's perspective: {peer_responses['grok']}")
+    if peer_responses.get("deepseek"):
+        available.append(f"DeepSeek's perspective: {peer_responses['deepseek']}")
     if peer_responses.get("gemini"):
         available.append(f"Gemini's perspective: {peer_responses['gemini']}")
 
