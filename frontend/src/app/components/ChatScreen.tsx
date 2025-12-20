@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle } from 'lucide-react';
-import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, AskResponse, ConfigResponse } from '@/lib/quilloApi';
+import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, MultiAgentMessage, AskResponse, ConfigResponse } from '@/lib/quilloApi';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,14 @@ interface Message {
   routeResult?: RouteResponse;
   executeResult?: ExecuteResponse;
   showProceedButtons?: boolean;
-  multiAgentMeta?: { provider: string; fallback_reason?: string | null; userText: string }; // For multi-agent transcript header
+  multiAgentMeta?: {
+    provider: string;
+    fallback_reason?: string | null;
+    peers_unavailable?: boolean;
+    userText: string;
+    allMessages: MultiAgentMessage[];
+  }; // For multi-agent transcript header
+  agentMeta?: MultiAgentMessage; // Per-message agent metadata
 }
 
 /**
@@ -249,18 +256,51 @@ function IntelligenceStatusBadge({
 }
 
 /**
+ * Agent Status Badge Component (for individual agent messages)
+ */
+function AgentStatusBadge({ message }: { message: MultiAgentMessage }) {
+  if (message.live) {
+    const modelShort = message.model_id?.split('/')[1] || message.model_id;
+    return (
+      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+        <Zap className="w-2.5 h-2.5" />
+        Live
+        {modelShort && <span className="text-[10px] opacity-70">({modelShort})</span>}
+      </div>
+    );
+  }
+
+  const reasonText = message.unavailable_reason === 'rate_limited' ? 'Rate-limited' :
+                     message.unavailable_reason === 'timeout' ? 'Timeout' :
+                     message.unavailable_reason === 'not_found' ? 'Not found' :
+                     'Unavailable';
+  return (
+    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+      <WifiOff className="w-2.5 h-2.5" />
+      {reasonText}
+    </div>
+  );
+}
+
+/**
  * Multi-Agent Provider Badge Component
  */
 function MultiAgentProviderBadge({
   provider,
   fallbackReason,
+  peersUnavailable,
+  messages,
   onRetry
 }: {
   provider: string;
   fallbackReason?: string | null;
+  peersUnavailable?: boolean;
+  messages: MultiAgentMessage[];
   onRetry?: () => void;
 }) {
   const isLive = provider === 'openrouter';
+  const failedAgents = messages.filter(m => !m.live && m.agent !== 'quillo');
+  const hasSomeFailures = failedAgents.length > 0;
 
   return (
     <div className="mb-3 space-y-2">
@@ -268,14 +308,16 @@ function MultiAgentProviderBadge({
         <div
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
             isLive
-              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+              ? hasSomeFailures
+                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
               : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
           }`}
         >
           {isLive ? (
             <>
               <Zap className="w-3 h-3" />
-              Live
+              {hasSomeFailures ? 'Partial Live' : 'Live'}
             </>
           ) : (
             <>
@@ -284,6 +326,17 @@ function MultiAgentProviderBadge({
             </>
           )}
         </div>
+
+        {isLive && hasSomeFailures && onRetry && (
+          <button
+            onClick={onRetry}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+          >
+            <Play className="w-3 h-3" />
+            Retry {failedAgents.length} unavailable
+          </button>
+        )}
+
         {!isLive && onRetry && (
           <button
             onClick={onRetry}
@@ -294,9 +347,20 @@ function MultiAgentProviderBadge({
           </button>
         )}
       </div>
+
       {!isLive && (
         <p className="text-xs text-muted-foreground">
           Live models were unavailable for this run — showing fallback output.
+        </p>
+      )}
+      {isLive && peersUnavailable && (
+        <p className="text-xs text-muted-foreground">
+          Quillo responded live, but all peer agents were unavailable.
+        </p>
+      )}
+      {isLive && hasSomeFailures && !peersUnavailable && (
+        <p className="text-xs text-muted-foreground">
+          Some agents were unavailable — showing partial live output.
         </p>
       )}
     </div>
@@ -540,12 +604,15 @@ export function ChatScreen() {
           role: 'assistant',
           content: `**${agentLabel}:** ${msg.content}`,
           timestamp: new Date(),
-          // Add meta to first message for the badge
+          agentMeta: msg, // NEW: per-message agent metadata
+          // Add meta to first message for the summary badge
           ...(idx === 0 && {
             multiAgentMeta: {
               provider: multiAgentResult.provider,
               fallback_reason: multiAgentResult.fallback_reason,
-              userText
+              peers_unavailable: multiAgentResult.peers_unavailable || false,
+              userText,
+              allMessages: multiAgentResult.messages
             }
           }),
         };
@@ -811,6 +878,8 @@ export function ChatScreen() {
                   <MultiAgentProviderBadge
                     provider={message.multiAgentMeta.provider}
                     fallbackReason={message.multiAgentMeta.fallback_reason}
+                    peersUnavailable={message.multiAgentMeta.peers_unavailable}
+                    messages={message.multiAgentMeta.allMessages}
                     onRetry={message.multiAgentMeta.provider !== 'openrouter' ? () => handleBringInAgentsForMessage(message.multiAgentMeta!.userText) : undefined}
                   />
                 )}
@@ -822,6 +891,12 @@ export function ChatScreen() {
                       : 'bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-border'
                   } rounded-[20px] px-5 py-3 shadow-lg`}
                 >
+                  {/* Per-agent status badge for multi-agent messages */}
+                  {message.agentMeta && (
+                    <div className="mb-2">
+                      <AgentStatusBadge message={message.agentMeta} />
+                    </div>
+                  )}
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-white/70' : 'text-muted-foreground'}`}>
                     {message.timestamp.toLocaleTimeString()}

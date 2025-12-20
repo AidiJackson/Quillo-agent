@@ -9,12 +9,13 @@ Verifies:
 - Gemini as 4th peer agent
 """
 import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 import httpx
 
 from quillo_agent.main import create_app
 from quillo_agent.config import settings
+from quillo_agent.services.multi_agent_chat import CLAUDE_MODEL, GROK_MODEL
 
 
 # Test UI token
@@ -203,10 +204,10 @@ class TestMultiAgentOnlineMode:
                     agents = [msg["agent"] for msg in data["messages"]]
                     assert agents == ["quillo", "claude", "grok", "gemini", "quillo"]
 
-    def test_online_fallback_to_template_on_error(self):
-        """Test that errors fall back to template mode with fallback_reason"""
+    def test_online_all_peers_fail_partial_live(self):
+        """Test that when all peer agents fail, we get partial-live with peers_unavailable=True"""
         async def mock_post_error(*args, **kwargs):
-            """Mock httpx.AsyncClient.post that raises error"""
+            """Mock httpx.AsyncClient.post that raises error for all OpenRouter calls"""
             raise httpx.HTTPError("API error")
 
         with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
@@ -220,10 +221,18 @@ class TestMultiAgentOnlineMode:
                     assert response.status_code == 200
                     data = response.json()
 
-                    # Should fall back to template with fallback reason
-                    assert data["provider"] == "template"
-                    assert data["fallback_reason"] == "openrouter_http_error"
+                    # NEW BEHAVIOR: Partial-live instead of full template fallback
+                    # Quillo frame succeeds (deterministic), all peers fail
+                    assert data["provider"] == "openrouter"
+                    assert data["peers_unavailable"] == True
+                    assert data["fallback_reason"] is None
                     assert len(data["messages"]) == 5
+
+                    # All peer agents should be unavailable
+                    for msg in data["messages"]:
+                        if msg["agent"] in ["claude", "grok", "gemini"]:
+                            assert msg["live"] == False
+                            assert msg["unavailable_reason"] == "exception"  # HTTPError is caught by generic Exception handler
 
 
 class TestMultiAgentResponseStructure:
@@ -327,3 +336,140 @@ class TestMultiAgentDevBypass:
                     assert response.status_code == 200
                     data = response.json()
                     assert data["provider"] == "template"
+
+
+class TestMultiAgentPartialLive:
+    """Test partial-live behavior where individual agents can fail independently."""
+
+    def test_quillo_succeeds_all_peers_fail(self):
+        """Test Quillo succeeds but all peers fail → openrouter with peers_unavailable=True"""
+        call_count = [0]
+
+        def create_mock_response(model, content):
+            """Create a mock response"""
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "choices": [{"message": {"content": content}}]
+            }
+            return mock_resp
+
+        async def mock_post(url, *args, **kwargs):
+            call_count[0] += 1
+            model = kwargs.get("json", {}).get("model", "")
+
+            # All peer calls fail
+            if "claude" in model.lower() or "grok" in model.lower() or "gemini" in model.lower():
+                raise httpx.TimeoutException("Timeout")
+
+            # Synthesis succeeds
+            return create_mock_response(model, "Synthesis content")
+
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', 'test-key'):
+                with patch('httpx.AsyncClient.post', new=mock_post):
+                    response = client.post("/ui/api/multi-agent",
+                                           headers={"X-UI-Token": TEST_UI_TOKEN},
+                                           json={"text": "test", "user_id": "demo"})
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert data["provider"] == "openrouter"
+                    assert data["peers_unavailable"] == True
+
+                    # Check peer agents are unavailable
+                    claude_msg = next(m for m in data["messages"] if m["agent"] == "claude")
+                    assert claude_msg["live"] == False
+                    assert claude_msg["unavailable_reason"] == "timeout"
+                    assert "[Agent unavailable:" in claude_msg["content"]
+
+    def test_quillo_and_one_peer_succeed(self):
+        """Test Quillo + Claude succeed, Grok/Gemini fail → openrouter, peers_unavailable=False"""
+        call_count = [0]
+
+        def create_mock_response(model, content):
+            """Create a mock response"""
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "choices": [{"message": {"content": content}}]
+            }
+            return mock_resp
+
+        async def mock_post(url, *args, **kwargs):
+            call_count[0] += 1
+            model = kwargs.get("json", {}).get("model", "")
+
+            # Claude succeeds
+            if "claude" in model.lower():
+                return create_mock_response(model, "Claude response")
+
+            # Grok and Gemini fail
+            if "grok" in model.lower() or "gemini" in model.lower():
+                mock_resp = MagicMock()
+                mock_resp.status_code = 429
+                raise httpx.HTTPStatusError("Rate limited",
+                                           request=MagicMock(),
+                                           response=mock_resp)
+
+            # Synthesis succeeds
+            return create_mock_response(model, "Synthesis")
+
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', 'test-key'):
+                with patch('httpx.AsyncClient.post', new=mock_post):
+                    response = client.post("/ui/api/multi-agent",
+                                           headers={"X-UI-Token": TEST_UI_TOKEN},
+                                           json={"text": "test", "user_id": "demo"})
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert data["provider"] == "openrouter"
+                    assert data["peers_unavailable"] == False
+
+                    # Check Claude is live
+                    claude_msg = next(m for m in data["messages"] if m["agent"] == "claude")
+                    assert claude_msg["live"] == True
+                    assert claude_msg["model_id"] == CLAUDE_MODEL
+
+                    # Check Grok is unavailable
+                    grok_msg = next(m for m in data["messages"] if m["agent"] == "grok")
+                    assert grok_msg["live"] == False
+                    assert grok_msg["unavailable_reason"] == "rate_limited"
+
+    def test_all_messages_have_new_metadata_fields(self):
+        """Test that all messages have model_id, live, unavailable_reason fields"""
+
+        def create_mock_response(model, content):
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "choices": [{"message": {"content": content}}]
+            }
+            return mock_resp
+
+        async def mock_post(url, *args, **kwargs):
+            model = kwargs.get("json", {}).get("model", "")
+            return create_mock_response(model, f"Response from {model}")
+
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', 'test-key'):
+                with patch('httpx.AsyncClient.post', new=mock_post):
+                    response = client.post("/ui/api/multi-agent",
+                                           headers={"X-UI-Token": TEST_UI_TOKEN},
+                                           json={"text": "test", "user_id": "demo"})
+
+                    assert response.status_code == 200
+                    data = response.json()
+
+                    # All messages should have the new fields
+                    for msg in data["messages"]:
+                        assert "model_id" in msg
+                        assert "live" in msg
+                        assert "unavailable_reason" in msg
+                        # First message (quillo frame) should have model_id=None
+                        if msg["agent"] == "quillo" and data["messages"].index(msg) == 0:
+                            assert msg["model_id"] is None
+                        # Live messages should have unavailable_reason=None
+                        if msg["live"]:
+                            assert msg["unavailable_reason"] is None

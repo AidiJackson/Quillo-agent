@@ -578,7 +578,7 @@ async def ui_multi_agent_chat(
     trace_id = str(uuid.uuid4())
 
     # Run multi-agent chat
-    messages_data, provider, fallback_reason = await run_multi_agent_chat(
+    messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
         text=payload.text,
         user_id=payload.user_id,
         agents=payload.agents,
@@ -592,5 +592,6 @@ async def ui_multi_agent_chat(
         messages=messages,
         provider=provider,
         trace_id=trace_id,
-        fallback_reason=fallback_reason
+        fallback_reason=fallback_reason,
+        peers_unavailable=peers_unavailable
     )
