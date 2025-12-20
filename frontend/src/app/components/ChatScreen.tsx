@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle } from 'lucide-react';
-import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse } from '@/lib/quilloApi';
+import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, AskResponse, ConfigResponse } from '@/lib/quilloApi';
 import {
   Dialog,
   DialogContent,
@@ -283,8 +283,9 @@ export function ChatScreen() {
   const [lastUserMessage, setLastUserMessage] = useState<{ text: string; routeResult?: RouteResponse; judgmentResult?: JudgmentResponse } | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAdvancedTools, setShowAdvancedTools] = useState(false);
+  const [rawChatMode, setRawChatMode] = useState<boolean>(true); // Default to raw mode
 
-  // Check backend health and auth status on mount
+  // Check backend health, auth status, and config on mount
   useEffect(() => {
     const checkHealth = async () => {
       try {
@@ -303,8 +304,19 @@ export function ChatScreen() {
         console.error('Auth status check failed:', error);
       }
     };
+    const checkConfig = async () => {
+      try {
+        const cfg = await config();
+        setRawChatMode(cfg.raw_chat_mode);
+      } catch (error) {
+        console.error('Config check failed:', error);
+        // Default to raw mode if check fails
+        setRawChatMode(true);
+      }
+    };
     checkHealth();
     checkAuthStatus();
+    checkConfig();
   }, []);
 
   const handleSend = async () => {
@@ -323,35 +335,81 @@ export function ChatScreen() {
     setLoading(true);
 
     try {
-      // Call judgment layer for conversational response
-      const judgmentResult = await judgment(userInput, 'demo');
-      setLastUserMessage({ text: userInput, judgmentResult });
+      if (rawChatMode) {
+        // RAW MODE: Use /ask for real LLM output
+        const askResult = await ask(userInput, 'demo');
 
-      // Use contract v1 fields if available, otherwise fall back to legacy
-      let messageContent = judgmentResult.assistant_message || judgmentResult.formatted_message;
+        // Update intelligence status based on model
+        setIntelligenceStatus(isOfflineMode(askResult.model) ? 'offline' : 'ai-powered');
 
-      // Add questions if present (contract v1)
-      if (judgmentResult.questions && judgmentResult.questions.length > 0) {
-        const questionsList = judgmentResult.questions.map(q => `• ${q}`).join('\n');
-        messageContent = `${messageContent}\n\n${questionsList}`;
+        // Handle offline mode with clear message
+        if (isOfflineMode(askResult.model)) {
+          const offlineMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: `I'm offline right now — hit Connect to enable live models.`,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, offlineMessage]);
+          return;
+        }
+
+        // Real LLM response
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: askResult.answer,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+
+        // Optional: Call judgment for stakes badge only (non-blocking)
+        try {
+          const judgmentResult = await judgment(userInput, 'demo');
+          setLastUserMessage({ text: userInput, judgmentResult });
+
+          // Update the message with judgment metadata
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMessage.id
+                ? { ...msg, judgmentResult }
+                : msg
+            )
+          );
+        } catch (error) {
+          console.warn('Judgment metadata failed (non-critical):', error);
+        }
+      } else {
+        // ADVANCED MODE: Use judgment layer (existing behavior)
+        const judgmentResult = await judgment(userInput, 'demo');
+        setLastUserMessage({ text: userInput, judgmentResult });
+
+        // Use contract v1 fields if available, otherwise fall back to legacy
+        let messageContent = judgmentResult.assistant_message || judgmentResult.formatted_message;
+
+        // Add questions if present (contract v1)
+        if (judgmentResult.questions && judgmentResult.questions.length > 0) {
+          const questionsList = judgmentResult.questions.map(q => `• ${q}`).join('\n');
+          messageContent = `${messageContent}\n\n${questionsList}`;
+        }
+
+        // Add suggested next step if present (contract v1)
+        if (judgmentResult.suggested_next_step) {
+          messageContent = `${messageContent}\n\nNext step: ${judgmentResult.suggested_next_step}`;
+        }
+
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: messageContent,
+          timestamp: new Date(),
+          judgmentResult,
+          showProceedButtons: judgmentResult.requires_confirmation,
+        };
+        setMessages((prev) => [...prev, aiMessage]);
       }
-
-      // Add suggested next step if present (contract v1)
-      if (judgmentResult.suggested_next_step) {
-        messageContent = `${messageContent}\n\nNext step: ${judgmentResult.suggested_next_step}`;
-      }
-
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: messageContent,
-        timestamp: new Date(),
-        judgmentResult,
-        showProceedButtons: judgmentResult.requires_confirmation,
-      };
-      setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
-      console.error('Judgment API failed:', error);
+      console.error('Chat API failed:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',

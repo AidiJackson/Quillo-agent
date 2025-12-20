@@ -31,6 +31,10 @@ export interface AuthStatusResponse {
   hint: string | null;
 }
 
+export interface ConfigResponse {
+  raw_chat_mode: boolean;
+}
+
 export interface PlanRequest {
   intent: string;
   text?: string;
@@ -137,6 +141,20 @@ export async function authStatus(): Promise<AuthStatusResponse> {
  */
 export function hasUiToken(): boolean {
   return Boolean(UI_TOKEN);
+}
+
+/**
+ * Get backend configuration (no auth required)
+ * Returns mode settings for frontend adaptation
+ */
+export async function config(): Promise<ConfigResponse> {
+  const response = await fetch(`${API_BASE}/config`);
+
+  if (!response.ok) {
+    throw new Error(`Config check failed: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /**

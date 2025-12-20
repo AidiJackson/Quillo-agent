@@ -147,6 +147,27 @@ async def ui_auth_status():
     )
 
 
+class ConfigResponse(BaseModel):
+    """Configuration response for frontend"""
+    raw_chat_mode: bool
+
+
+@router.get("/config", response_model=ConfigResponse)
+async def ui_config():
+    """
+    Configuration endpoint for UI (no auth required).
+
+    Returns mode settings so the frontend can adapt behavior.
+    This is unauthenticated so the frontend can check config at any time.
+
+    Returns:
+        ConfigResponse with raw_chat_mode setting
+    """
+    return ConfigResponse(
+        raw_chat_mode=settings.raw_chat_mode
+    )
+
+
 @router.post("/judgment", response_model=JudgmentResponse)
 @limiter.limit("30/minute")
 async def ui_explain_judgment(
