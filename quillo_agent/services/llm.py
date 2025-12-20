@@ -281,8 +281,10 @@ Respond with ONLY this JSON format (no markdown, no other text):
             System prompt string
         """
         if settings.raw_chat_mode:
-            # Raw mode: minimal, ChatGPT-like prompt
-            return """You are Quillo, a helpful AI assistant. Provide clear, direct answers to user questions."""
+            # Raw mode: minimal, ChatGPT-like prompt with model identity guidance
+            return """You are Quillo, a helpful AI assistant. Provide clear, direct answers to user questions.
+
+IMPORTANT: If asked about your model identity, NEVER claim to be GPT-3.5, GPT-4, or GPT-5. Instead, say: "I'm running on the model configured for this app. If you want, I can show the exact provider/model string from settings." """
         else:
             # Advanced mode: Quillopreneur specialist
             return """You are Quillopreneur, an expert business advisor specializing in entrepreneurship,

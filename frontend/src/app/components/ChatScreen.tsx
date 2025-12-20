@@ -17,6 +17,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  model?: string; // Model used for response (raw mode)
   judgmentResult?: JudgmentResponse;
   routeResult?: RouteResponse;
   executeResult?: ExecuteResponse;
@@ -336,7 +337,7 @@ export function ChatScreen() {
 
     try {
       if (rawChatMode) {
-        // RAW MODE: Use /ask for real LLM output
+        // RAW CHAT V1: Use /ask for real LLM output, no judgment/contract coupling
         const askResult = await ask(userInput, 'demo');
 
         // Update intelligence status based on model
@@ -349,6 +350,7 @@ export function ChatScreen() {
             role: 'assistant',
             content: `I'm offline right now — hit Connect to enable live models.`,
             timestamp: new Date(),
+            model: askResult.model,
           };
           setMessages((prev) => [...prev, offlineMessage]);
           return;
@@ -360,25 +362,9 @@ export function ChatScreen() {
           role: 'assistant',
           content: askResult.answer,
           timestamp: new Date(),
+          model: askResult.model,
         };
         setMessages((prev) => [...prev, aiMessage]);
-
-        // Optional: Call judgment for stakes badge only (non-blocking)
-        try {
-          const judgmentResult = await judgment(userInput, 'demo');
-          setLastUserMessage({ text: userInput, judgmentResult });
-
-          // Update the message with judgment metadata
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === aiMessage.id
-                ? { ...msg, judgmentResult }
-                : msg
-            )
-          );
-        } catch (error) {
-          console.warn('Judgment metadata failed (non-critical):', error);
-        }
       } else {
         // ADVANCED MODE: Use judgment layer (existing behavior)
         const judgmentResult = await judgment(userInput, 'demo');
@@ -482,30 +468,13 @@ export function ChatScreen() {
     );
   };
 
-  const handleBringInAgents = async (messageId: string) => {
-    // Find the message and get the original user text
-    const message = messages.find(msg => msg.id === messageId);
-    if (!message) return;
-
-    // Find the original user message (should be right before this assistant message)
-    const messageIndex = messages.findIndex(msg => msg.id === messageId);
-    const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
-    if (!userMessage || userMessage.role !== 'user') return;
-
-    // Hide the suggestion buttons
-    setMessages(prev =>
-      prev.map(msg =>
-        msg.id === messageId
-          ? { ...msg, showProceedButtons: false }
-          : msg
-      )
-    );
-
+  const handleBringInAgentsForMessage = async (userText: string) => {
+    // Raw mode: Bring in other agents for a specific user message
     setLoading(true);
 
     try {
-      // Call multi-agent chat with the original user message
-      const multiAgentResult = await multiAgent(userMessage.content, 'demo');
+      // Call multi-agent chat with the user message
+      const multiAgentResult = await multiAgent(userText, 'demo');
 
       // Add each agent message to the chat
       multiAgentResult.messages.forEach((msg, idx) => {
@@ -530,6 +499,28 @@ export function ChatScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBringInAgents = async (messageId: string) => {
+    // Find the message and get the original user text
+    const message = messages.find(msg => msg.id === messageId);
+    if (!message) return;
+
+    // Find the original user message (should be right before this assistant message)
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
+    if (!userMessage || userMessage.role !== 'user') return;
+
+    // Hide the suggestion buttons
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, showProceedButtons: false }
+          : msg
+      )
+    );
+
+    await handleBringInAgentsForMessage(userMessage.content);
   };
 
   const handleContinueSolo = (messageId: string) => {
@@ -756,51 +747,70 @@ export function ChatScreen() {
                   </p>
                 </div>
 
-                {/* Stakes Badge */}
-                {message.judgmentResult && (
-                  <div className="flex items-center gap-2">
-                    <StakesBadge stakes={message.judgmentResult.stakes} />
-                  </div>
-                )}
-
-                {/* Proceed/Not Yet Buttons */}
-                {message.showProceedButtons && message.judgmentResult?.suggested_next_step !== 'add_agents' && (
+                {/* RAW MODE: Bring in agents button for user messages */}
+                {rawChatMode && message.role === 'user' && (
                   <div className="flex gap-2">
                     <button
-                      onClick={() => handleProceed(message.id)}
+                      onClick={() => handleBringInAgentsForMessage(message.content)}
                       disabled={loading}
-                      className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                     >
-                      Proceed
-                    </button>
-                    <button
-                      onClick={() => handleNotYet(message.id)}
-                      disabled={loading}
-                      className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Not yet
+                      <Brain className="w-3 h-3" />
+                      Bring in other agents
                     </button>
                   </div>
                 )}
 
-                {/* Agent Suggestion Buttons (v1) */}
-                {message.judgmentResult?.suggested_next_step === 'add_agents' && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleBringInAgents(message.id)}
-                      disabled={loading}
-                      className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Bring in a second opinion
-                    </button>
-                    <button
-                      onClick={() => handleContinueSolo(message.id)}
-                      disabled={loading}
-                      className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Continue with you
-                    </button>
-                  </div>
+                {/* ADVANCED MODE ONLY: Stakes, Proceed, Agent Suggestion Buttons */}
+                {!rawChatMode && (
+                  <>
+                    {/* Stakes Badge */}
+                    {message.judgmentResult && (
+                      <div className="flex items-center gap-2">
+                        <StakesBadge stakes={message.judgmentResult.stakes} />
+                      </div>
+                    )}
+
+                    {/* Proceed/Not Yet Buttons */}
+                    {message.showProceedButtons && message.judgmentResult?.suggested_next_step !== 'add_agents' && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleProceed(message.id)}
+                          disabled={loading}
+                          className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Proceed
+                        </button>
+                        <button
+                          onClick={() => handleNotYet(message.id)}
+                          disabled={loading}
+                          className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Not yet
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Agent Suggestion Buttons (v1) */}
+                    {message.judgmentResult?.suggested_next_step === 'add_agents' && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleBringInAgents(message.id)}
+                          disabled={loading}
+                          className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Bring in a second opinion
+                        </button>
+                        <button
+                          onClick={() => handleContinueSolo(message.id)}
+                          disabled={loading}
+                          className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Continue with you
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Route Result Card */}
