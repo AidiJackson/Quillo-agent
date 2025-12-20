@@ -74,7 +74,7 @@ async def answer_business_question(
         try:
             answer = await llm_router.answer_business_question(safe_text, profile_excerpt)
             if answer:
-                model_name = llm_router._get_openrouter_model()
+                model_name = llm_router._get_openrouter_model(for_chat=True)
                 logger.info(f"Using OpenRouter model: {model_name}")
                 return answer, f"openrouter/{model_name}"
             else:

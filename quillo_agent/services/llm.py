@@ -17,8 +17,21 @@ class LLMRouter:
         self.anthropic_key = settings.anthropic_api_key
         self.model_routing = settings.model_routing
 
-    def _get_openrouter_model(self, tier: Optional[str] = None) -> str:
-        """Get OpenRouter model based on routing tier"""
+    def _get_openrouter_model(self, tier: Optional[str] = None, for_chat: bool = False) -> str:
+        """
+        Get OpenRouter model based on routing tier or chat mode.
+
+        Args:
+            tier: Optional tier override
+            for_chat: If True and raw_chat_mode is enabled, use chat model
+
+        Returns:
+            Model identifier string
+        """
+        # In raw chat mode, use dedicated chat model for user-facing answers
+        if for_chat and settings.raw_chat_mode:
+            return settings.openrouter_chat_model
+
         routing_tier = tier or self.model_routing
         model_map = {
             "fast": settings.openrouter_fast_model,
@@ -307,7 +320,7 @@ Be concise, specific, and helpful. Focus on the user's question."""
             user_message = f"User context: {safe_profile}\n\nQuestion: {safe_text}"
 
         try:
-            model = self._get_openrouter_model()  # Use routing tier
+            model = self._get_openrouter_model(for_chat=True)  # Use chat model in raw mode
             result = await self._openrouter_chat(
                 messages=[
                     {"role": "system", "content": system_message},

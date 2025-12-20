@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     openrouter_balanced_model: str = "anthropic/claude-3.5-sonnet"
     openrouter_premium_model: str = "anthropic/claude-opus-4"
     openrouter_gemini_model: str = "google/gemini-2.0-flash-exp:free"
+    openrouter_chat_model: str = "openai/gpt-4o-mini"  # Default chat model for raw mode
 
     # Anthropic LLM provider (direct)
     anthropic_api_key: str = ""

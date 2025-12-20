@@ -151,6 +151,59 @@ class TestRawChatModeDefaultBehavior:
         assert settings.raw_chat_mode is True
 
 
+class TestRawChatModeModelSelection:
+    """Test that raw mode uses the correct chat model"""
+
+    def test_raw_mode_uses_chat_model(self):
+        """In raw mode, should use openrouter_chat_model for answers"""
+        from quillo_agent.services.llm import LLMRouter
+
+        router = LLMRouter()
+
+        with patch.object(settings, 'raw_chat_mode', True):
+            with patch.object(settings, 'openrouter_chat_model', 'openai/gpt-4o-mini'):
+                model = router._get_openrouter_model(for_chat=True)
+                assert model == 'openai/gpt-4o-mini'
+
+    def test_raw_mode_does_not_use_haiku(self):
+        """In raw mode, should NOT use haiku for chat"""
+        from quillo_agent.services.llm import LLMRouter
+
+        router = LLMRouter()
+
+        with patch.object(settings, 'raw_chat_mode', True):
+            with patch.object(settings, 'openrouter_chat_model', 'openai/gpt-4o-mini'):
+                model = router._get_openrouter_model(for_chat=True)
+                assert 'haiku' not in model.lower()
+                assert 'claude-3-haiku' not in model
+
+    def test_advanced_mode_uses_tier_routing(self):
+        """In advanced mode, should use tier-based model selection"""
+        from quillo_agent.services.llm import LLMRouter
+
+        with patch.object(settings, 'raw_chat_mode', False):
+            with patch.object(settings, 'model_routing', 'balanced'):
+                with patch.object(settings, 'openrouter_balanced_model', 'anthropic/claude-3.5-sonnet'):
+                    # Create router after patching settings
+                    router = LLMRouter()
+                    model = router._get_openrouter_model(for_chat=True)
+                    assert model == 'anthropic/claude-3.5-sonnet'
+
+    def test_non_chat_calls_ignore_chat_model(self):
+        """Non-chat calls (classification, etc) should ignore chat model"""
+        from quillo_agent.services.llm import LLMRouter
+
+        router = LLMRouter()
+
+        with patch.object(settings, 'raw_chat_mode', True):
+            with patch.object(settings, 'openrouter_chat_model', 'openai/gpt-4o-mini'):
+                with patch.object(settings, 'model_routing', 'fast'):
+                    with patch.object(settings, 'openrouter_fast_model', 'anthropic/claude-3-haiku'):
+                        # for_chat=False should use tier routing even in raw mode
+                        model = router._get_openrouter_model(for_chat=False)
+                        assert model == 'anthropic/claude-3-haiku'
+
+
 class TestRawChatModeNoTemplateResponses:
     """Test that raw mode doesn't use templated phrases"""
 
