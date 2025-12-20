@@ -16,31 +16,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Quillo Agent API"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Quillo Frontend"
+args = "Start Uboolia"
 
 [[workflows.workflow]]
-name = "Quillo Agent API"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "uvicorn app:app --host 0.0.0.0 --port 8000"
-waitForPort = 8000
-
-[[workflows.workflow]]
-name = "Quillo Frontend"
+name = "Start Uboolia"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd frontend && npm run dev"
+args = "bash start-dev.sh"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
@@ -49,10 +33,6 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 5001
-externalPort = 3000
 
 [[ports]]
 localPort = 8000
