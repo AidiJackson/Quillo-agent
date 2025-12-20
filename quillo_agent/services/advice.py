@@ -33,6 +33,9 @@ OFFLINE_TEMPLATES = {
 For more detailed, personalized advice, please ensure API keys are configured."""
 }
 
+# Neutral error message for RAW_CHAT_MODE (no advisor voice)
+RAW_MODE_NEUTRAL_ERROR = "I couldn't reach the model right now. Please try again."
+
 
 async def answer_business_question(
     text: str,
@@ -50,30 +53,39 @@ async def answer_business_question(
     Returns:
         Tuple of (answer, model_name)
     """
-    # Truncate input to prevent prompt injection and excessive tokens
-    safe_text = text[:2000]
+    # In RAW_CHAT_MODE: use text as-is (no truncation, no profile)
+    if settings.raw_chat_mode:
+        safe_text = text
+        profile_excerpt = ""
+        logger.debug("RAW_CHAT_MODE: skipping truncation and profile loading")
+    else:
+        # Advanced mode: truncate input to prevent prompt injection and excessive tokens
+        safe_text = text[:2000]
 
-    # Load user profile excerpt if available
-    profile_excerpt = ""
-    if user_id and db:
-        try:
-            profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
-            if profile and profile.profile_md:
-                # Extract first 300 chars as context
-                profile_excerpt = profile.profile_md[:300]
-        except Exception as e:
-            logger.warning(f"Failed to load user profile: {e}")
+        # Load user profile excerpt if available
+        profile_excerpt = ""
+        if user_id and db:
+            try:
+                profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+                if profile and profile.profile_md:
+                    # Extract first 300 chars as context
+                    profile_excerpt = profile.profile_md[:300]
+            except Exception as e:
+                logger.warning(f"Failed to load user profile: {e}")
 
     # Check if we're in offline mode first
     if is_offline_mode():
         logger.info("Using offline business advice template (no API keys configured)")
+        # Use neutral error in raw mode
+        if settings.raw_chat_mode:
+            return RAW_MODE_NEUTRAL_ERROR, "template"
         return OFFLINE_TEMPLATES["default"], "template"
 
     # In raw chat mode, ONLY use OpenRouter with chat model (no Anthropic fallback)
     if settings.raw_chat_mode:
         if not settings.openrouter_api_key:
             logger.warning("Raw chat mode enabled but OpenRouter not configured")
-            return OFFLINE_TEMPLATES["default"], "template"
+            return RAW_MODE_NEUTRAL_ERROR, "template"
 
         try:
             answer = await llm_router.answer_business_question(safe_text, profile_excerpt)
@@ -82,11 +94,11 @@ async def answer_business_question(
                 logger.info(f"Using OpenRouter model (raw mode): {model_name}")
                 return answer, f"openrouter/{model_name}"
             else:
-                logger.warning("OpenRouter returned None in raw mode; using offline template")
-                return OFFLINE_TEMPLATES["default"], "template"
+                logger.warning("OpenRouter returned None in raw mode; using neutral error")
+                return RAW_MODE_NEUTRAL_ERROR, "template"
         except Exception as e:
-            logger.error(f"OpenRouter API failed in raw mode: {e}; using offline template")
-            return OFFLINE_TEMPLATES["default"], "template"
+            logger.error(f"OpenRouter API failed in raw mode: {e}; using neutral error")
+            return RAW_MODE_NEUTRAL_ERROR, "template"
 
     # Advanced mode: Try OpenRouter first if configured
     if settings.openrouter_api_key:

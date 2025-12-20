@@ -15,7 +15,7 @@ import httpx
 
 from quillo_agent.main import create_app
 from quillo_agent.config import settings
-from quillo_agent.services.multi_agent_chat import CLAUDE_MODEL, GROK_MODEL
+from quillo_agent.services.multi_agent_chat import CLAUDE_MODEL, CHALLENGER_MODEL
 
 
 # Test UI token
@@ -100,7 +100,7 @@ class TestMultiAgentOfflineMode:
                 assert data["provider"] == "template"
                 assert data["fallback_reason"] == "openrouter_key_missing"
 
-                # Should have 5 messages (Primary/Claude/Grok/Gemini/Primary)
+                # Should have 5 messages (Primary/Claude/DeepSeek/Gemini/Primary)
                 assert len(data["messages"]) == 5
 
                 # Check message structure
@@ -112,7 +112,7 @@ class TestMultiAgentOfflineMode:
 
                 # Check agents
                 agents = [msg["agent"] for msg in data["messages"]]
-                assert agents == ["quillo", "claude", "grok", "gemini", "quillo"]
+                assert agents == ["quillo", "claude", "deepseek", "gemini", "quillo"]
 
                 # Check content is not empty
                 for msg in data["messages"]:
@@ -148,7 +148,7 @@ class TestMultiAgentOnlineMode:
         # Mock OpenRouter responses
         mock_responses = {
             "claude": "Claude's perspective on this matter.",
-            "grok": "Grok's contrasting view here.",
+            "deepseek": "DeepSeek's contrasting view here.",
             "gemini": "Gemini's structured analysis here.",
             "synth": "Here's my synthesis and recommendation. What's your risk tolerance?"
         }
@@ -160,8 +160,8 @@ class TestMultiAgentOnlineMode:
 
             if "claude" in model.lower():
                 content = mock_responses["claude"]
-            elif "grok" in model.lower():
-                content = mock_responses["grok"]
+            elif "deepseek" in model.lower():
+                content = mock_responses["deepseek"]
             elif "gemini" in model.lower():
                 content = mock_responses["gemini"]
             else:
@@ -202,7 +202,7 @@ class TestMultiAgentOnlineMode:
 
                     # Check agents
                     agents = [msg["agent"] for msg in data["messages"]]
-                    assert agents == ["quillo", "claude", "grok", "gemini", "quillo"]
+                    assert agents == ["quillo", "claude", "deepseek", "gemini", "quillo"]
 
     def test_online_all_peers_fail_partial_live(self):
         """Test that when all peer agents fail, we get partial-live with peers_unavailable=True"""
@@ -230,7 +230,7 @@ class TestMultiAgentOnlineMode:
 
                     # All peer agents should be unavailable
                     for msg in data["messages"]:
-                        if msg["agent"] in ["claude", "grok", "gemini"]:
+                        if msg["agent"] in ["claude", "deepseek", "gemini"]:
                             assert msg["live"] == False
                             assert msg["unavailable_reason"] == "exception"  # HTTPError is caught by generic Exception handler
 
@@ -298,11 +298,11 @@ class TestMultiAgentResponseStructure:
                 assert response.status_code == 200
                 data = response.json()
 
-                # Should be: Primary -> Claude -> Grok -> Gemini -> Primary
+                # Should be: Primary -> Claude -> DeepSeek -> Gemini -> Primary
                 agents = [msg["agent"] for msg in data["messages"]]
                 assert agents[0] == "quillo"  # Primary frames
                 assert agents[1] == "claude"  # Claude perspective
-                assert agents[2] == "grok"    # Grok contrasts
+                assert agents[2] == "deepseek"    # DeepSeek contrasts
                 assert agents[3] == "gemini"  # Gemini structured analysis
                 assert agents[4] == "quillo"  # Primary synthesizes
 
@@ -359,7 +359,7 @@ class TestMultiAgentPartialLive:
             model = kwargs.get("json", {}).get("model", "")
 
             # All peer calls fail
-            if "claude" in model.lower() or "grok" in model.lower() or "gemini" in model.lower():
+            if "claude" in model.lower() or "deepseek" in model.lower() or "gemini" in model.lower():
                 raise httpx.TimeoutException("Timeout")
 
             # Synthesis succeeds
@@ -384,7 +384,7 @@ class TestMultiAgentPartialLive:
                     assert "[Agent unavailable:" in claude_msg["content"]
 
     def test_quillo_and_one_peer_succeed(self):
-        """Test Quillo + Claude succeed, Grok/Gemini fail → openrouter, peers_unavailable=False"""
+        """Test Quillo + Claude succeed, DeepSeek/Gemini fail → openrouter, peers_unavailable=False"""
         call_count = [0]
 
         def create_mock_response(model, content):
@@ -404,8 +404,8 @@ class TestMultiAgentPartialLive:
             if "claude" in model.lower():
                 return create_mock_response(model, "Claude response")
 
-            # Grok and Gemini fail
-            if "grok" in model.lower() or "gemini" in model.lower():
+            # DeepSeek and Gemini fail
+            if "deepseek" in model.lower() or "gemini" in model.lower():
                 mock_resp = MagicMock()
                 mock_resp.status_code = 429
                 raise httpx.HTTPStatusError("Rate limited",
@@ -432,10 +432,10 @@ class TestMultiAgentPartialLive:
                     assert claude_msg["live"] == True
                     assert claude_msg["model_id"] == CLAUDE_MODEL
 
-                    # Check Grok is unavailable
-                    grok_msg = next(m for m in data["messages"] if m["agent"] == "grok")
-                    assert grok_msg["live"] == False
-                    assert grok_msg["unavailable_reason"] == "rate_limited"
+                    # Check DeepSeek is unavailable
+                    deepseek_msg = next(m for m in data["messages"] if m["agent"] == "deepseek")
+                    assert deepseek_msg["live"] == False
+                    assert deepseek_msg["unavailable_reason"] == "rate_limited"
 
     def test_all_messages_have_new_metadata_fields(self):
         """Test that all messages have model_id, live, unavailable_reason fields"""

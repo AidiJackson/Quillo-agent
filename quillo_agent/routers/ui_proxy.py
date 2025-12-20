@@ -168,6 +168,43 @@ async def ui_config():
     )
 
 
+class RawAuditResponse(BaseModel):
+    """Raw mode audit response for QA verification (no secrets)"""
+    raw_chat_mode: bool
+    message_shape: str  # "user_only" | "system+user"
+    profile_prepending_enabled: bool
+    truncation_enabled: bool
+    offline_template_style: str  # "neutral" | "advisor"
+
+
+@router.get("/raw-audit", response_model=RawAuditResponse)
+async def ui_raw_audit():
+    """
+    Raw mode audit endpoint for QA verification (no auth required, no secrets).
+
+    Returns diagnostic information about RAW_CHAT_MODE behavior:
+    - Whether raw mode is enabled
+    - Message shape (user_only vs system+user)
+    - Whether profile prepending is active
+    - Whether truncation is active
+    - Offline template style (neutral vs advisor)
+
+    This endpoint is unauthenticated so it can be used for diagnostics.
+
+    Returns:
+        RawAuditResponse with raw mode configuration details
+    """
+    is_raw_mode = settings.raw_chat_mode
+
+    return RawAuditResponse(
+        raw_chat_mode=is_raw_mode,
+        message_shape="user_only" if is_raw_mode else "system+user",
+        profile_prepending_enabled=not is_raw_mode,
+        truncation_enabled=not is_raw_mode,
+        offline_template_style="neutral" if is_raw_mode else "advisor"
+    )
+
+
 class ModelStatusResponse(BaseModel):
     """Model status response (diagnostic, no secrets)"""
     raw_chat_model: str
