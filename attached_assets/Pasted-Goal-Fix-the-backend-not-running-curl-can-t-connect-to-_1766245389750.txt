@@ -1,0 +1,94 @@
+Goal: Fix the “backend not running / curl can’t connect to localhost:8000” issue by wiring the project so Replit’s Run/Stop button starts the correct processes automatically (backend + frontend), without manual shell commands.
+
+Problem (what’s happening)
+
+When I run:
+
+curl -i http://localhost:8000/ui/api/auth-status
+
+I get: Failed to connect to localhost port 8000
+
+This means nothing is listening on port 8000 (backend server not started).
+
+I don’t want to run uvicorn ... manually in the shell every time.
+
+I want Replit’s Run/Stop button to start/stop everything consistently.
+
+Requirements
+
+Create a single workflow that starts:
+
+Backend: FastAPI (uvicorn) on port 8000
+
+Frontend: Vite dev server on port 5173 (or whatever the project uses)
+
+Make the Run button execute one command only (e.g. bash start-dev.sh).
+
+Add/adjust health checks so I can confirm it’s working via:
+
+GET /ui/api/health
+
+GET /ui/api/auth-status
+
+No breaking changes to existing routes.
+
+Keep secrets as-is:
+
+QUILLO_UI_TOKEN and VITE_UI_TOKEN already exist and match.
+
+Ensure the backend binds to 0.0.0.0 not localhost-only.
+
+Implementation plan
+
+A) Add a start script at repo root
+Create start-dev.sh that:
+
+starts backend in the background:
+
+python -m uvicorn quillo_agent.main:app --host 0.0.0.0 --port 8000
+
+starts frontend:
+
+cd frontend && npm run dev -- --host 0.0.0.0 --port 5173
+
+handles Ctrl+C / stop properly (trap and kill child processes)
+
+prints clear logs: “Backend running on :8000”, “Frontend running on :5173”
+
+B) Configure Replit to use that script
+Update .replit so Run executes:
+
+bash start-dev.sh
+
+If Replit supports “workflows”, create one named:
+
+Start Uboolia
+that runs bash start-dev.sh.
+
+C) Add verification steps
+After running, verify:
+
+curl -s http://localhost:8000/ui/api/health
+
+curl -s http://localhost:8000/ui/api/auth-status
+
+If those fail, print backend logs and confirm correct port binding.
+
+D) Add rollback checkpoint
+Before changes:
+
+Create git tag: checkpoint-replit-run-pre-YYYYMMDD-HHMM
+
+Then commit:
+
+chore(replit): wire run workflow for backend+frontend
+
+Definition of done
+
+Clicking Run starts both servers every time.
+
+Clicking Stop stops both servers.
+
+curl http://localhost:8000/ui/api/health returns JSON.
+
+curl http://localhost:8000/ui/api/auth-status returns JSON (not connection refused).
