@@ -8,7 +8,7 @@ Quillo Agent is an AI Chief of Staff orchestrator MVP with a React frontend and 
 - **Frontend**: React + Vite + TypeScript (port 5000)
 - **Backend**: FastAPI (Python 3.11, port 8000)
 - **Database**: PostgreSQL (Replit-managed)
-- **Last Updated**: December 17, 2025
+- **Last Updated**: December 20, 2025
 
 ## Project Architecture
 
@@ -80,24 +80,24 @@ Note: The app works without LLM API keys using rule-based classification (Offlin
 
 ## Running the Project
 
-### Replit Environment (Two Workflows)
-Both frontend and backend run automatically:
+### Replit Environment (Single Combined Workflow)
+The "Start Uboolia" workflow runs both servers automatically via `start-dev.sh`:
 
-**Frontend** (port 5000 - webview):
 ```bash
-cd frontend && npm run dev
+bash start-dev.sh
 ```
 
-**Backend** (port 8000 - internal):
-```bash
-uvicorn app:app --host 0.0.0.0 --port 8000
-# or: make run
-```
+This starts:
+- **Backend**: FastAPI on port 8000 (internal API)
+- **Frontend**: Vite on port 5000 (webview)
+
+The script handles graceful shutdown when you click Stop or press Ctrl+C.
 
 ### Access Points
 - **Frontend UI**: Opens automatically in Replit webview (port 5000)
 - **Backend API Docs**: `http://localhost:8000/docs` (internal only)
-- **Health Check**: `GET http://localhost:8000/health`
+- **Health Check**: `GET http://localhost:8000/ui/api/health`
+- **Auth Status**: `GET http://localhost:8000/ui/api/auth-status`
 
 ### Local Development (Outside Replit)
 ```bash
