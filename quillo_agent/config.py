@@ -23,12 +23,16 @@ class Settings(BaseSettings):
     openrouter_fast_model: str = "anthropic/claude-3-haiku"
     openrouter_balanced_model: str = "anthropic/claude-3.5-sonnet"
     openrouter_premium_model: str = "anthropic/claude-opus-4"
+    openrouter_gemini_model: str = "google/gemini-2.0-flash-exp:free"
 
     # Anthropic LLM provider (direct)
     anthropic_api_key: str = ""
 
     # Model routing tier
     model_routing: str = "fast"  # fast|balanced|premium
+
+    # Multi-agent prompt mode
+    multi_agent_prompt_mode: str = "raw"  # raw|tuned
 
     # Security settings
     quillo_api_key: str = ""

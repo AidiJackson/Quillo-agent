@@ -1,13 +1,15 @@
 """
-Multi-Agent Chat Service (v0)
+Multi-Agent Chat Service (v0.1)
 
-Minimal proof: 3 agents, one thread, real conversation.
+Multi-agent conversation with 4 peer agents:
 - Primary (Quillo) frames
 - Claude gives perspective
 - Grok gives contrasting perspective
+- Gemini gives alternative angle / structured take
 - Primary (Quillo) synthesizes
 
 No tools execution. No streaming. Just conversation.
+Feature: Prompt mode (raw vs tuned) for future specialist prompts.
 """
 import uuid
 from typing import Optional
@@ -20,26 +22,47 @@ from ..config import settings
 # Model IDs for multi-agent chat
 CLAUDE_MODEL = "anthropic/claude-3.5-sonnet"
 GROK_MODEL = "x-ai/grok-2-1212"  # Grok 2
+GEMINI_MODEL = settings.openrouter_gemini_model
 PRIMARY_MODEL = settings.openrouter_balanced_model
 
 
-# System prompts for each agent (forbid chain-of-thought)
-PRIMARY_FRAME_PROMPT = """You are Quillo, a helpful AI assistant for business communication.
-Acknowledge the user's question briefly and frame what perspectives would be useful.
-Be conversational and warm. No chain-of-thought. No "here's my reasoning". Just natural speech."""
+def _get_agent_prompt(agent_name: str, mode: str = "raw") -> str:
+    """
+    Get system prompt for an agent based on the prompt mode.
 
-CLAUDE_PROMPT = """You are Claude, an AI assistant focused on thoughtful, nuanced analysis.
-Provide a helpful perspective on the user's question. Be insightful but concise.
-No chain-of-thought. No "I'm thinking". Just share your perspective naturally."""
+    Args:
+        agent_name: Name of agent ("claude", "grok", "gemini", "primary_frame", "primary_synth")
+        mode: Prompt mode ("raw" or "tuned")
 
-GROK_PROMPT = """You are Grok, an AI with a contrarian, challenger mindset.
-Question assumptions. Offer a different angle or potential risks the user should consider.
-Be direct and a bit provocative, but helpful. No chain-of-thought. Just speak plainly."""
+    Returns:
+        System prompt string
+    """
+    # Raw mode: minimal constraints, model speaks naturally
+    # Still prevents chain-of-thought and tool narration
+    if mode == "raw":
+        raw_prompts = {
+            "primary_frame": """You are Quillo. Reply naturally in your own style.
+Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
+            "claude": """You are Claude. Reply naturally in your own style.
+Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
+            "grok": """You are Grok. Reply naturally in your own style.
+Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
+            "gemini": """You are Gemini. Reply naturally in your own style.
+Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
+            "primary_synth": """You are Quillo. Reply naturally in your own style.
+Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical."""
+        }
+        return raw_prompts.get(agent_name, raw_prompts["claude"])
 
-PRIMARY_SYNTH_PROMPT = """You are Quillo, synthesizing the conversation.
-You've seen perspectives from Claude and Grok. Now give a clear recommendation.
-End with one thoughtful follow-up question to help the user think deeper.
-No chain-of-thought. Be conversational and actionable."""
+    # Tuned mode: placeholder for future specialist prompts
+    # For now, identical to raw (will add specialists later)
+    # TODO: Load agent prompts from specialist configuration
+    elif mode == "tuned":
+        # Placeholder: same as raw for now
+        return _get_agent_prompt(agent_name, mode="raw")
+
+    # Default to raw
+    return _get_agent_prompt(agent_name, mode="raw")
 
 
 async def run_multi_agent_chat(
@@ -95,7 +118,7 @@ def _generate_template_transcript(text: str) -> list[dict]:
         {
             "role": "assistant",
             "agent": "quillo",
-            "content": f"Got it. Let me bring in a couple perspectives on this. We'll hear from Claude on the thoughtful approach, then Grok will challenge some assumptions."
+            "content": f"Got it. Let me bring in a few perspectives on this. We'll hear from Claude, Grok, and Gemini."
         },
         {
             "role": "assistant",
@@ -109,8 +132,13 @@ def _generate_template_transcript(text: str) -> list[dict]:
         },
         {
             "role": "assistant",
+            "agent": "gemini",
+            "content": f"Here's a structured view: break this into phases. First, validate your core assumption. Second, test with a small pilot. Third, scale what works. This approach gives you Claude's thoughtfulness without Grok's risk of paralysis."
+        },
+        {
+            "role": "assistant",
             "agent": "quillo",
-            "content": f"Both perspectives have merit. My recommendation: start with Claude's long-term thinking to set your foundation, but use Grok's urgency test—if waiting costs you the opportunity, act faster. Quick question: what's your personal risk tolerance on this decision?"
+            "content": f"All three perspectives add value. My recommendation: use Gemini's phased approach as your framework, with Claude's long-term lens and Grok's urgency check at each phase. Quick question: what's the smallest pilot you could run to validate this?"
         }
     ]
 
@@ -119,10 +147,11 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     """
     Generate real multi-agent conversation using OpenRouter.
 
-    Calls OpenRouter 3 times:
+    Calls OpenRouter 4 times for peer agents + synthesis:
     1. Claude perspective
     2. Grok perspective
-    3. Primary synthesis
+    3. Gemini perspective
+    4. Primary synthesis
 
     Args:
         text: User's input text
@@ -131,6 +160,7 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
         List of message dicts
     """
     messages = []
+    prompt_mode = settings.multi_agent_prompt_mode
 
     # Message 1: Primary frames
     primary_frame = _generate_short_frame(text)
@@ -143,7 +173,7 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     # Message 2: Claude perspective
     claude_content = await _call_openrouter(
         model=CLAUDE_MODEL,
-        system_prompt=CLAUDE_PROMPT,
+        system_prompt=_get_agent_prompt("claude", mode=prompt_mode),
         user_message=text
     )
     messages.append({
@@ -155,7 +185,7 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     # Message 3: Grok perspective
     grok_content = await _call_openrouter(
         model=GROK_MODEL,
-        system_prompt=GROK_PROMPT,
+        system_prompt=_get_agent_prompt("grok", mode=prompt_mode),
         user_message=text
     )
     messages.append({
@@ -164,19 +194,33 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
         "content": grok_content
     })
 
-    # Message 4: Primary synthesis
-    # Give primary context of what Claude and Grok said
+    # Message 4: Gemini perspective
+    gemini_content = await _call_openrouter(
+        model=GEMINI_MODEL,
+        system_prompt=_get_agent_prompt("gemini", mode=prompt_mode),
+        user_message=text
+    )
+    messages.append({
+        "role": "assistant",
+        "agent": "gemini",
+        "content": gemini_content
+    })
+
+    # Message 5: Primary synthesis
+    # Give primary context of what all three peer agents said
     synth_prompt = f"""User asked: {text}
 
 Claude's perspective: {claude_content}
 
 Grok's perspective: {grok_content}
 
+Gemini's perspective: {gemini_content}
+
 Now synthesize these into a clear recommendation and end with one follow-up question."""
 
     primary_synth = await _call_openrouter(
         model=PRIMARY_MODEL,
-        system_prompt=PRIMARY_SYNTH_PROMPT,
+        system_prompt=_get_agent_prompt("primary_synth", mode=prompt_mode),
         user_message=synth_prompt
     )
     messages.append({
@@ -190,8 +234,8 @@ Now synthesize these into a clear recommendation and end with one follow-up ques
 
 def _generate_short_frame(text: str) -> str:
     """Generate a short framing message for Primary."""
-    # Keep it simple for v0
-    return "Got it. Let me bring in a couple perspectives on this. We'll hear from Claude, then Grok will challenge some assumptions."
+    # Keep it simple for v0.1
+    return "Got it. Let me bring in a few perspectives on this. We'll hear from Claude, Grok, and Gemini."
 
 
 async def _call_openrouter(

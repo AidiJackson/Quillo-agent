@@ -1,11 +1,12 @@
 """
-Tests for Multi-Agent Chat endpoint (v0)
+Tests for Multi-Agent Chat endpoint (v0.1)
 
 Verifies:
 - Auth protection (UI token required)
 - Offline mode returns template transcript
 - Online mode with OpenRouter mocking
 - No chain-of-thought leakage
+- Gemini as 4th peer agent
 """
 import pytest
 from unittest.mock import patch, AsyncMock
@@ -96,8 +97,8 @@ class TestMultiAgentOfflineMode:
                 # Should use template provider
                 assert data["provider"] == "template"
 
-                # Should have 4 messages (Primary/Claude/Grok/Primary)
-                assert len(data["messages"]) == 4
+                # Should have 5 messages (Primary/Claude/Grok/Gemini/Primary)
+                assert len(data["messages"]) == 5
 
                 # Check message structure
                 for msg in data["messages"]:
@@ -108,7 +109,7 @@ class TestMultiAgentOfflineMode:
 
                 # Check agents
                 agents = [msg["agent"] for msg in data["messages"]]
-                assert agents == ["quillo", "claude", "grok", "quillo"]
+                assert agents == ["quillo", "claude", "grok", "gemini", "quillo"]
 
                 # Check content is not empty
                 for msg in data["messages"]:
@@ -145,6 +146,7 @@ class TestMultiAgentOnlineMode:
         mock_responses = {
             "claude": "Claude's perspective on this matter.",
             "grok": "Grok's contrasting view here.",
+            "gemini": "Gemini's structured analysis here.",
             "synth": "Here's my synthesis and recommendation. What's your risk tolerance?"
         }
 
@@ -157,6 +159,8 @@ class TestMultiAgentOnlineMode:
                 content = mock_responses["claude"]
             elif "grok" in model.lower():
                 content = mock_responses["grok"]
+            elif "gemini" in model.lower():
+                content = mock_responses["gemini"]
             else:
                 content = mock_responses["synth"]
 
@@ -189,12 +193,12 @@ class TestMultiAgentOnlineMode:
                     # Should use openrouter provider
                     assert data["provider"] == "openrouter"
 
-                    # Should have 4 messages
-                    assert len(data["messages"]) == 4
+                    # Should have 5 messages
+                    assert len(data["messages"]) == 5
 
                     # Check agents
                     agents = [msg["agent"] for msg in data["messages"]]
-                    assert agents == ["quillo", "claude", "grok", "quillo"]
+                    assert agents == ["quillo", "claude", "grok", "gemini", "quillo"]
 
     def test_online_fallback_to_template_on_error(self):
         """Test that errors fall back to template mode"""
@@ -215,7 +219,7 @@ class TestMultiAgentOnlineMode:
 
                     # Should fall back to template
                     assert data["provider"] == "template"
-                    assert len(data["messages"]) == 4
+                    assert len(data["messages"]) == 5
 
 
 class TestMultiAgentResponseStructure:
@@ -280,12 +284,13 @@ class TestMultiAgentResponseStructure:
                 assert response.status_code == 200
                 data = response.json()
 
-                # Should be: Primary -> Claude -> Grok -> Primary
+                # Should be: Primary -> Claude -> Grok -> Gemini -> Primary
                 agents = [msg["agent"] for msg in data["messages"]]
                 assert agents[0] == "quillo"  # Primary frames
                 assert agents[1] == "claude"  # Claude perspective
                 assert agents[2] == "grok"    # Grok contrasts
-                assert agents[3] == "quillo"  # Primary synthesizes
+                assert agents[3] == "gemini"  # Gemini structured analysis
+                assert agents[4] == "quillo"  # Primary synthesizes
 
     def test_optional_agents_parameter(self):
         """Test that agents parameter is optional"""
@@ -299,7 +304,7 @@ class TestMultiAgentResponseStructure:
                 )
                 assert response.status_code == 200
                 data = response.json()
-                assert len(data["messages"]) == 4
+                assert len(data["messages"]) == 5
 
 
 class TestMultiAgentDevBypass:
