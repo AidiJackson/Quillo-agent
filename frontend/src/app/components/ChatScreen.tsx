@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle } from 'lucide-react';
-import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse } from '@/lib/quilloApi';
+import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse } from '@/lib/quilloApi';
 import {
   Dialog,
   DialogContent,
@@ -424,6 +424,50 @@ export function ChatScreen() {
     );
   };
 
+  const handleMultiAgent = async () => {
+    if (!input.trim() || loading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+      timestamp: new Date(),
+    };
+
+    setMessages([...messages, userMessage]);
+    const userInput = input;
+    setInput('');
+    setLoading(true);
+
+    try {
+      // Call multi-agent chat
+      const multiAgentResult = await multiAgent(userInput, 'demo');
+
+      // Add each agent message to the chat
+      multiAgentResult.messages.forEach((msg, idx) => {
+        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : 'Grok';
+        const agentMessage: Message = {
+          id: (Date.now() + idx + 1).toString(),
+          role: 'assistant',
+          content: `**${agentLabel}:** ${msg.content}`,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, agentMessage]);
+      });
+    } catch (error) {
+      console.error('Multi-agent chat failed:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `I encountered an error with the group chat: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleExecute = async () => {
     if (!planResult || !lastUserMessage?.routeResult) {
       const errorMessage: Message = {
@@ -669,6 +713,14 @@ export function ChatScreen() {
                 ) : (
                   <Send className="w-5 h-5" />
                 )}
+              </button>
+              <button
+                onClick={handleMultiAgent}
+                disabled={loading || !input.trim()}
+                className="px-4 py-3 bg-slate-600 text-white rounded-[16px] hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                title="Get perspectives from multiple agents"
+              >
+                Group chat (v0)
               </button>
             </div>
 

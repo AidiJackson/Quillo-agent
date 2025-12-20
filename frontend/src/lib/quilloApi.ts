@@ -324,3 +324,59 @@ export async function execute(
 
   return response.json();
 }
+
+export interface MultiAgentMessage {
+  role: string;
+  agent: string;
+  content: string;
+}
+
+export interface MultiAgentRequest {
+  text: string;
+  user_id?: string;
+  agents?: string[];
+}
+
+export interface MultiAgentResponse {
+  messages: MultiAgentMessage[];
+  provider: string;
+  trace_id: string;
+}
+
+/**
+ * Multi-agent chat (v0)
+ * Get perspectives from multiple agents in one conversation
+ */
+export async function multiAgent(
+  text: string,
+  userId?: string,
+  agents?: string[]
+): Promise<MultiAgentResponse> {
+  const request: MultiAgentRequest = {
+    text,
+    user_id: userId,
+    agents,
+  };
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/multi-agent`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Multi-agent chat failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}

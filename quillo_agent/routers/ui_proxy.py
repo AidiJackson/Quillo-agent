@@ -22,12 +22,14 @@ from ..schemas import (
     ProfileIn, ProfileOut,
     FeedbackIn, FeedbackOut,
     ExecuteRequest, ExecuteResponse,
-    JudgmentRequest, JudgmentResponse
+    JudgmentRequest, JudgmentResponse,
+    MultiAgentRequest, MultiAgentResponse, MultiAgentMessage
 )
 from ..services import quillo, advice, memory as memory_service
 from ..services.execution import execution_service
 from ..services.judgment import assess_stakes, build_explanation, format_for_user
 from ..services.interaction_contract import enforce_contract, ActionIntent
+from ..services.multi_agent_chat import run_multi_agent_chat
 
 
 # Rate limiter instance
@@ -518,4 +520,54 @@ async def ui_execute_plan(
         trace_id=trace_id,
         provider_used=provider_used,
         warnings=warnings
+    )
+
+
+@router.post("/multi-agent", response_model=MultiAgentResponse)
+@limiter.limit("30/minute")
+async def ui_multi_agent_chat(
+    request: Request,
+    payload: MultiAgentRequest,
+    token: str = Depends(verify_ui_token)
+) -> MultiAgentResponse:
+    """
+    UI proxy for multi-agent chat (v0).
+
+    Minimal proof: 3 agents, one thread, real conversation.
+    - Primary (Quillo) frames
+    - Claude gives perspective
+    - Grok gives contrasting perspective
+    - Primary (Quillo) synthesizes
+
+    No tools execution. No streaming. Just conversation.
+    Rate limited to 30 requests per minute per IP.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: MultiAgentRequest with text, user_id, agents
+        token: Validated UI token
+
+    Returns:
+        MultiAgentResponse with messages, provider, trace_id
+    """
+    import uuid
+    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, text_len={len(payload.text)}")
+
+    # Generate trace ID
+    trace_id = str(uuid.uuid4())
+
+    # Run multi-agent chat
+    messages_data, provider = await run_multi_agent_chat(
+        text=payload.text,
+        user_id=payload.user_id,
+        agents=payload.agents
+    )
+
+    # Convert to MultiAgentMessage models
+    messages = [MultiAgentMessage(**msg) for msg in messages_data]
+
+    return MultiAgentResponse(
+        messages=messages,
+        provider=provider,
+        trace_id=trace_id
     )

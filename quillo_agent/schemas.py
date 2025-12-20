@@ -127,3 +127,24 @@ class JudgmentResponse(BaseModel):
     assistant_message: Optional[str] = Field(None, description="Contract-compliant conversational message")
     questions: Optional[List[str]] = Field(None, description="Clarifying questions (if mode=clarify)")
     suggested_next_step: Optional[str] = Field(None, description="Next step suggestion (if mode=cannot_do_yet)")
+
+
+class MultiAgentMessage(BaseModel):
+    """Single message in multi-agent conversation"""
+    role: str = Field(..., description="Message role: 'assistant' or 'user'")
+    agent: str = Field(..., description="Agent name: 'quillo', 'claude', 'grok'")
+    content: str = Field(..., description="Message content")
+
+
+class MultiAgentRequest(BaseModel):
+    """Request for multi-agent chat"""
+    text: str = Field(..., description="User input text")
+    user_id: Optional[str] = Field(None, description="User identifier")
+    agents: Optional[List[str]] = Field(None, description="List of agents to include (default: ['primary', 'claude', 'grok'])")
+
+
+class MultiAgentResponse(BaseModel):
+    """Response from multi-agent chat"""
+    messages: List[MultiAgentMessage] = Field(..., description="Multi-agent conversation messages")
+    provider: str = Field(..., description="Provider used: 'openrouter' or 'template'")
+    trace_id: str = Field(..., description="Trace identifier for debugging")
