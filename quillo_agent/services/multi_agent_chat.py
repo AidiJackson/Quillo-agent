@@ -19,10 +19,10 @@ import httpx
 from ..config import settings
 
 
-# Model IDs for multi-agent chat
-CLAUDE_MODEL = "anthropic/claude-3.5-sonnet"
-GROK_MODEL = "x-ai/grok-2-1212"  # Grok 2
-GEMINI_MODEL = settings.openrouter_gemini_model
+# Model IDs for multi-agent chat (env-configurable for reliability)
+CLAUDE_MODEL = settings.openrouter_claude_agent_model
+GROK_MODEL = settings.openrouter_grok_agent_model
+GEMINI_MODEL = settings.openrouter_gemini_agent_model
 PRIMARY_MODEL = settings.openrouter_chat_model  # GPT-4o-mini (or GPT-4o)
 
 

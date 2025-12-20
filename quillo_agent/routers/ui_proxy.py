@@ -168,6 +168,37 @@ async def ui_config():
     )
 
 
+class ModelStatusResponse(BaseModel):
+    """Model status response (diagnostic, no secrets)"""
+    raw_chat_model: str
+    claude_agent_model: str
+    grok_agent_model: str
+    gemini_agent_model: str
+    primary_synthesis_model: str
+
+
+@router.get("/model-status", response_model=ModelStatusResponse)
+async def ui_model_status():
+    """
+    Model status diagnostic endpoint (no auth required, no secrets).
+
+    Returns the configured OpenRouter model strings for each agent.
+    Useful for debugging multi-agent reliability issues.
+
+    This endpoint is unauthenticated so it can be used for diagnostics.
+
+    Returns:
+        ModelStatusResponse with all configured model strings
+    """
+    return ModelStatusResponse(
+        raw_chat_model=settings.openrouter_chat_model,
+        claude_agent_model=settings.openrouter_claude_agent_model,
+        grok_agent_model=settings.openrouter_grok_agent_model,
+        gemini_agent_model=settings.openrouter_gemini_agent_model,
+        primary_synthesis_model=settings.openrouter_chat_model
+    )
+
+
 @router.post("/judgment", response_model=JudgmentResponse)
 @limiter.limit("30/minute")
 async def ui_explain_judgment(
