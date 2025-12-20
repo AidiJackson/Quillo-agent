@@ -68,8 +68,9 @@ Do not reveal chain-of-thought. Do not describe tool usage. Be concise and pract
 async def run_multi_agent_chat(
     text: str,
     user_id: Optional[str] = None,
-    agents: Optional[list[str]] = None
-) -> tuple[list[dict], str]:
+    agents: Optional[list[str]] = None,
+    trace_id: Optional[str] = None
+) -> tuple[list[dict], str, Optional[str]]:
     """
     Run a multi-agent chat conversation.
 
@@ -77,28 +78,46 @@ async def run_multi_agent_chat(
         text: User's input text
         user_id: Optional user identifier
         agents: List of agent names (default: ["primary", "claude", "grok"])
+        trace_id: Optional trace ID for logging
 
     Returns:
-        Tuple of (messages, provider)
+        Tuple of (messages, provider, fallback_reason)
         - messages: List of dicts with {role, agent, content}
         - provider: "openrouter" or "template"
+        - fallback_reason: None if live, or reason string if template fallback
     """
     agents = agents or ["primary", "claude", "grok"]
-    logger.info(f"Multi-agent chat: user_id={user_id}, agents={agents}")
+    logger.info(f"Multi-agent chat: user_id={user_id}, agents={agents}, trace_id={trace_id}")
 
     # Check if OpenRouter is available
     if not settings.openrouter_api_key:
-        logger.info("OpenRouter key missing, using template responses")
-        return _generate_template_transcript(text), "template"
+        fallback_reason = "openrouter_key_missing"
+        logger.info(f"[{trace_id}] OpenRouter key missing, using template responses")
+        return _generate_template_transcript(text), "template", fallback_reason
 
     # Use OpenRouter to generate real conversation
     try:
         messages = await _generate_openrouter_transcript(text)
-        return messages, "openrouter"
+        return messages, "openrouter", None
+    except httpx.TimeoutException as e:
+        fallback_reason = "openrouter_timeout"
+        logger.warning(f"[{trace_id}] Multi-agent fallback: {fallback_reason} ({e.__class__.__name__})")
+        return _generate_template_transcript(text), "template", fallback_reason
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 429:
+            fallback_reason = "openrouter_rate_limited"
+        else:
+            fallback_reason = "openrouter_http_error"
+        logger.warning(f"[{trace_id}] Multi-agent fallback: {fallback_reason} ({e.__class__.__name__}: {e.response.status_code})")
+        return _generate_template_transcript(text), "template", fallback_reason
+    except httpx.HTTPError as e:
+        fallback_reason = "openrouter_http_error"
+        logger.warning(f"[{trace_id}] Multi-agent fallback: {fallback_reason} ({e.__class__.__name__})")
+        return _generate_template_transcript(text), "template", fallback_reason
     except Exception as e:
-        logger.error(f"OpenRouter multi-agent chat failed: {e}")
-        # Fallback to template
-        return _generate_template_transcript(text), "template"
+        fallback_reason = "openrouter_exception"
+        logger.warning(f"[{trace_id}] Multi-agent fallback: {fallback_reason} ({e.__class__.__name__})")
+        return _generate_template_transcript(text), "template", fallback_reason
 
 
 def _generate_template_transcript(text: str) -> list[dict]:

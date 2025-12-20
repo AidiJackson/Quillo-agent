@@ -148,3 +148,4 @@ class MultiAgentResponse(BaseModel):
     messages: List[MultiAgentMessage] = Field(..., description="Multi-agent conversation messages")
     provider: str = Field(..., description="Provider used: 'openrouter' or 'template'")
     trace_id: str = Field(..., description="Trace identifier for debugging")
+    fallback_reason: Optional[str] = Field(None, description="Reason for fallback if provider is 'template' (e.g., 'openrouter_timeout', 'openrouter_rate_limited', 'openrouter_http_error', 'openrouter_exception', 'openrouter_key_missing')")

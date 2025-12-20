@@ -359,6 +359,7 @@ export interface MultiAgentResponse {
   messages: MultiAgentMessage[];
   provider: string;
   trace_id: string;
+  fallback_reason?: string | null;
 }
 
 /**

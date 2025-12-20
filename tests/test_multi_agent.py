@@ -93,9 +93,11 @@ class TestMultiAgentOfflineMode:
                 assert "messages" in data
                 assert "provider" in data
                 assert "trace_id" in data
+                assert "fallback_reason" in data
 
-                # Should use template provider
+                # Should use template provider with fallback reason
                 assert data["provider"] == "template"
+                assert data["fallback_reason"] == "openrouter_key_missing"
 
                 # Should have 5 messages (Primary/Claude/Grok/Gemini/Primary)
                 assert len(data["messages"]) == 5
@@ -190,8 +192,9 @@ class TestMultiAgentOnlineMode:
                     assert response.status_code == 200
                     data = response.json()
 
-                    # Should use openrouter provider
+                    # Should use openrouter provider with no fallback reason
                     assert data["provider"] == "openrouter"
+                    assert data["fallback_reason"] is None
 
                     # Should have 5 messages
                     assert len(data["messages"]) == 5
@@ -201,7 +204,7 @@ class TestMultiAgentOnlineMode:
                     assert agents == ["quillo", "claude", "grok", "gemini", "quillo"]
 
     def test_online_fallback_to_template_on_error(self):
-        """Test that errors fall back to template mode"""
+        """Test that errors fall back to template mode with fallback_reason"""
         async def mock_post_error(*args, **kwargs):
             """Mock httpx.AsyncClient.post that raises error"""
             raise httpx.HTTPError("API error")
@@ -217,8 +220,9 @@ class TestMultiAgentOnlineMode:
                     assert response.status_code == 200
                     data = response.json()
 
-                    # Should fall back to template
+                    # Should fall back to template with fallback reason
                     assert data["provider"] == "template"
+                    assert data["fallback_reason"] == "openrouter_http_error"
                     assert len(data["messages"]) == 5
 
 
@@ -241,6 +245,7 @@ class TestMultiAgentResponseStructure:
                 assert "messages" in data
                 assert "provider" in data
                 assert "trace_id" in data
+                assert "fallback_reason" in data
 
                 # Messages structure
                 assert isinstance(data["messages"], list)

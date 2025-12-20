@@ -22,6 +22,7 @@ interface Message {
   routeResult?: RouteResponse;
   executeResult?: ExecuteResponse;
   showProceedButtons?: boolean;
+  multiAgentMeta?: { provider: string; fallback_reason?: string | null; userText: string }; // For multi-agent transcript header
 }
 
 /**
@@ -243,6 +244,61 @@ function IntelligenceStatusBadge({
         }
         <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Multi-Agent Provider Badge Component
+ */
+function MultiAgentProviderBadge({
+  provider,
+  fallbackReason,
+  onRetry
+}: {
+  provider: string;
+  fallbackReason?: string | null;
+  onRetry?: () => void;
+}) {
+  const isLive = provider === 'openrouter';
+
+  return (
+    <div className="mb-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+            isLive
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+          }`}
+        >
+          {isLive ? (
+            <>
+              <Zap className="w-3 h-3" />
+              Live
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-3 h-3" />
+              Fallback
+            </>
+          )}
+        </div>
+        {!isLive && onRetry && (
+          <button
+            onClick={onRetry}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+          >
+            <Play className="w-3 h-3" />
+            Retry live
+          </button>
+        )}
+      </div>
+      {!isLive && (
+        <p className="text-xs text-muted-foreground">
+          Live models were unavailable for this run — showing fallback output.
+        </p>
+      )}
     </div>
   );
 }
@@ -476,7 +532,7 @@ export function ChatScreen() {
       // Call multi-agent chat with the user message
       const multiAgentResult = await multiAgent(userText, 'demo');
 
-      // Add each agent message to the chat
+      // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
         const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'grok' ? 'Grok' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
         const agentMessage: Message = {
@@ -484,6 +540,14 @@ export function ChatScreen() {
           role: 'assistant',
           content: `**${agentLabel}:** ${msg.content}`,
           timestamp: new Date(),
+          // Add meta to first message for the badge
+          ...(idx === 0 && {
+            multiAgentMeta: {
+              provider: multiAgentResult.provider,
+              fallback_reason: multiAgentResult.fallback_reason,
+              userText
+            }
+          }),
         };
         setMessages(prev => [...prev, agentMessage]);
       });
@@ -553,7 +617,7 @@ export function ChatScreen() {
       // Call multi-agent chat
       const multiAgentResult = await multiAgent(userInput, 'demo');
 
-      // Add each agent message to the chat
+      // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
         const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'grok' ? 'Grok' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
         const agentMessage: Message = {
@@ -561,6 +625,14 @@ export function ChatScreen() {
           role: 'assistant',
           content: `**${agentLabel}:** ${msg.content}`,
           timestamp: new Date(),
+          // Add meta to first message for the badge
+          ...(idx === 0 && {
+            multiAgentMeta: {
+              provider: multiAgentResult.provider,
+              fallback_reason: multiAgentResult.fallback_reason,
+              userText: userInput
+            }
+          }),
         };
         setMessages(prev => [...prev, agentMessage]);
       });
@@ -734,6 +806,15 @@ export function ChatScreen() {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div className={`max-w-[80%] space-y-2`}>
+                {/* Multi-Agent Provider Badge (shown above first agent message) */}
+                {message.multiAgentMeta && (
+                  <MultiAgentProviderBadge
+                    provider={message.multiAgentMeta.provider}
+                    fallbackReason={message.multiAgentMeta.fallback_reason}
+                    onRetry={message.multiAgentMeta.provider !== 'openrouter' ? () => handleBringInAgentsForMessage(message.multiAgentMeta!.userText) : undefined}
+                  />
+                )}
+
                 <div
                   className={`${
                     message.role === 'user'
