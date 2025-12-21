@@ -598,11 +598,20 @@ export function ChatScreen() {
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
-        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'deepseek' ? 'DeepSeek' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
+        // Determine if this is a synthesis message (Quillo's final message)
+        const isSynthesis = msg.agent === 'quillo' && idx === multiAgentResult.messages.length - 1;
+
+        const agentLabel = msg.agent === 'quillo' ?
+          (isSynthesis ? 'Quillo — Synthesis' : 'Quillo') :
+          msg.agent === 'claude' ? 'Claude' :
+          msg.agent === 'deepseek' ? 'DeepSeek' :
+          msg.agent === 'gemini' ? 'Gemini' :
+          msg.agent;
+
         const agentMessage: Message = {
           id: (Date.now() + idx + 1).toString(),
           role: 'assistant',
-          content: `**${agentLabel}:** ${msg.content}`,
+          content: `${agentLabel}\n\n${msg.content}`,
           timestamp: new Date(),
           agentMeta: msg, // NEW: per-message agent metadata
           // Add meta to first message for the summary badge
@@ -686,18 +695,30 @@ export function ChatScreen() {
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
-        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'deepseek' ? 'DeepSeek' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
+        // Determine if this is a synthesis message (Quillo's final message)
+        const isSynthesis = msg.agent === 'quillo' && idx === multiAgentResult.messages.length - 1;
+
+        const agentLabel = msg.agent === 'quillo' ?
+          (isSynthesis ? 'Quillo — Synthesis' : 'Quillo') :
+          msg.agent === 'claude' ? 'Claude' :
+          msg.agent === 'deepseek' ? 'DeepSeek' :
+          msg.agent === 'gemini' ? 'Gemini' :
+          msg.agent;
+
         const agentMessage: Message = {
           id: (Date.now() + idx + 1).toString(),
           role: 'assistant',
-          content: `**${agentLabel}:** ${msg.content}`,
+          content: `${agentLabel}\n\n${msg.content}`,
           timestamp: new Date(),
+          agentMeta: msg, // Per-message agent metadata
           // Add meta to first message for the badge
           ...(idx === 0 && {
             multiAgentMeta: {
               provider: multiAgentResult.provider,
               fallback_reason: multiAgentResult.fallback_reason,
-              userText: userInput
+              peers_unavailable: multiAgentResult.peers_unavailable || false,
+              userText: userInput,
+              allMessages: multiAgentResult.messages
             }
           }),
         };
@@ -897,23 +918,49 @@ export function ChatScreen() {
                       <AgentStatusBadge message={message.agentMeta} />
                     </div>
                   )}
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {/* Render message content with styled headers for multi-agent messages */}
+                  {message.agentMeta ? (
+                    // Multi-agent message: parse and style the agent header
+                    (() => {
+                      const lines = message.content.split('\n');
+                      const agentName = lines[0];
+                      const content = lines.slice(2).join('\n'); // Skip agent name and blank line
+
+                      return (
+                        <>
+                          <p className="text-sm font-semibold text-primary mb-2 pb-2 border-b border-border/30">{agentName}</p>
+                          <p className="text-sm whitespace-pre-wrap">{content}</p>
+                        </>
+                      );
+                    })()
+                  ) : (
+                    // Regular message
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  )}
                   <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-white/70' : 'text-muted-foreground'}`}>
                     {message.timestamp.toLocaleTimeString()}
                   </p>
                 </div>
 
-                {/* RAW MODE: Bring in agents button for user messages */}
+                {/* RAW MODE: Bring in other models button for user messages */}
                 {rawChatMode && message.role === 'user' && (
-                  <div className="flex gap-2">
+                  <div className="space-y-1.5">
                     <button
                       onClick={() => handleBringInAgentsForMessage(message.content)}
                       disabled={loading}
-                      className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      className="group relative px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                     >
                       <Brain className="w-3 h-3" />
-                      Bring in other agents
+                      Get second opinions
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                        Claude, Gemini, and DeepSeek will each reply once. Quillo will summarize.
+                        <div className="absolute top-full left-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
+                      </div>
                     </button>
+                    <p className="text-[10px] text-muted-foreground pl-1">
+                      Optional — manually bring in other models for this question
+                    </p>
                   </div>
                 )}
 
@@ -1022,10 +1069,15 @@ export function ChatScreen() {
               <button
                 onClick={handleMultiAgent}
                 disabled={loading || !input.trim()}
-                className="px-4 py-3 bg-slate-600 text-white rounded-[16px] hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                title="Get perspectives from multiple agents"
+                className="group relative px-4 py-3 bg-slate-600 text-white rounded-[16px] hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-1.5"
               >
-                Group chat (v0)
+                <Brain className="w-4 h-4" />
+                Get second opinions
+                {/* Tooltip */}
+                <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                  Claude, Gemini, and DeepSeek will each reply once. Quillo will summarize.
+                  <div className="absolute top-full right-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
+                </div>
               </button>
             </div>
 
