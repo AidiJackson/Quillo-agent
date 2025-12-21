@@ -45,6 +45,47 @@ def _is_persuasive(text: str) -> bool:
     return any(phrase in text_lower for phrase in PERSUASION_PHRASES)
 
 
+def _detect_empty_reason(query: str, search_results: List[Dict[str, Any]], extracted_facts: List[Dict[str, Any]]) -> str:
+    """
+    Detect why evidence retrieval returned empty results.
+
+    Evidence Guards v1.1: Heuristic-based detection to help users understand why no facts were found.
+
+    Args:
+        query: The search query
+        search_results: Search results from web search
+        extracted_facts: Facts extracted from results
+
+    Returns:
+        One of: computed_stat, ambiguous_query, source_fetch_blocked, no_results, unknown
+    """
+    query_lower = query.lower()
+
+    # Check for computed statistics
+    computed_indicators = ["percentage", "percent", "%", "rate", "ratio", "average", "mean"]
+    if any(indicator in query_lower for indicator in computed_indicators):
+        return "computed_stat"
+
+    # Check for ambiguous queries (sports + year patterns)
+    # Common pattern: team/league name + year (could mean season or calendar year)
+    sports_indicators = ["season", "league", "championship", "wins", "losses", "draws", "points"]
+    year_pattern = re.search(r'\b(19|20)\d{2}\b', query_lower)
+    if year_pattern and any(indicator in query_lower for indicator in sports_indicators):
+        return "ambiguous_query"
+
+    # Check if we got search results but failed to extract facts
+    # This suggests source fetching or parsing issues
+    if len(search_results) > 0 and len(extracted_facts) == 0:
+        return "source_fetch_blocked"
+
+    # No search results at all
+    if len(search_results) == 0:
+        return "no_results"
+
+    # Unknown reason
+    return "unknown"
+
+
 async def _search_web(query: str) -> List[Dict[str, Any]]:
     """
     Perform web search and return results.
@@ -244,13 +285,15 @@ async def retrieve_evidence(query: str) -> EvidenceResponse:
         if not search_results:
             end_time = datetime.now(timezone.utc)
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
+            empty_reason = _detect_empty_reason(query.strip(), [], [])
             return EvidenceResponse(
                 ok=True,
                 retrieved_at=retrieved_at,
                 duration_ms=duration_ms,
                 facts=[],
                 sources=[],
-                limits="No search results found for this query."
+                limits="No search results found for this query.",
+                empty_reason=empty_reason
             )
 
         # Step 2: Extract facts from results
@@ -285,10 +328,12 @@ async def retrieve_evidence(query: str) -> EvidenceResponse:
         end_time = datetime.now(timezone.utc)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
-        # Build limits note if needed
+        # Build limits note and empty_reason if needed
         limits_note = None
+        empty_reason = None
         if len(facts) == 0:
             limits_note = "No facts could be extracted from search results."
+            empty_reason = _detect_empty_reason(query.strip(), search_results, extracted_facts)
         elif len(facts) < 6:
             limits_note = "Limited results available for this query."
 
@@ -298,7 +343,8 @@ async def retrieve_evidence(query: str) -> EvidenceResponse:
             duration_ms=duration_ms,
             facts=facts,
             sources=sources,
-            limits=limits_note
+            limits=limits_note,
+            empty_reason=empty_reason
         )
 
     except Exception as e:

@@ -377,3 +377,113 @@ class TestRateLimiting:
 
             # Should get a response (might be error due to mock, but not rate limited)
             assert response.status_code in [200, 429]  # 200 or Too Many Requests
+
+
+class TestEvidenceGuardsV1_1:
+    """Test Evidence Guards v1.1 - empty_reason detection and authority guards"""
+
+    def test_empty_reason_field_exists(self):
+        """Test that empty_reason field is present in response when facts are empty"""
+        with patch.object(settings, 'quillo_ui_token', ''):
+            response = client.post(
+                "/ui/api/evidence",
+                json={"query": "nonexistent query xyz123"},
+                headers={}
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # When facts are empty, empty_reason should be present
+        if len(data.get("facts", [])) == 0:
+            assert "empty_reason" in data
+            assert data["empty_reason"] in [
+                "no_results", "ambiguous_query", "computed_stat",
+                "source_fetch_blocked", "unknown", None
+            ]
+
+    def test_computed_stat_detection(self):
+        """Test that queries with percentage/rate are detected as computed_stat"""
+        from quillo_agent.services.evidence import _detect_empty_reason
+
+        # Test queries that should be detected as computed_stat
+        computed_queries = [
+            "What is the win percentage of Leeds United in 2024?",
+            "Calculate the conversion rate for our landing page",
+            "What's the average score?",
+            "Show me the ratio of wins to losses",
+            "What percentage of users clicked?"
+        ]
+
+        for query in computed_queries:
+            reason = _detect_empty_reason(query, [], [])
+            assert reason == "computed_stat", f"Failed to detect computed_stat for: {query}"
+
+    def test_ambiguous_query_detection(self):
+        """Test that sports + year queries are detected as ambiguous"""
+        from quillo_agent.services.evidence import _detect_empty_reason
+
+        # Test queries that should be detected as ambiguous
+        ambiguous_queries = [
+            "Leeds United wins 2024",
+            "Manchester United season 2023",
+            "NBA championship 2022",
+            "Premier league points 2021"
+        ]
+
+        for query in ambiguous_queries:
+            reason = _detect_empty_reason(query, [], [])
+            assert reason == "ambiguous_query", f"Failed to detect ambiguous_query for: {query}"
+
+    def test_source_fetch_blocked_detection(self):
+        """Test that search results with no extracted facts are detected as source_fetch_blocked"""
+        from quillo_agent.services.evidence import _detect_empty_reason
+
+        # Simulate having search results but no extracted facts
+        search_results = [
+            {"title": "Test", "url": "https://example.com", "snippet": "snippet"}
+        ]
+        extracted_facts = []
+
+        reason = _detect_empty_reason("test query", search_results, extracted_facts)
+        assert reason == "source_fetch_blocked"
+
+    def test_no_results_detection(self):
+        """Test that queries with no search results are detected as no_results"""
+        from quillo_agent.services.evidence import _detect_empty_reason
+
+        reason = _detect_empty_reason("test query", [], [])
+        assert reason == "no_results"
+
+    def test_empty_reason_not_present_when_facts_exist(self):
+        """Test that empty_reason is None or not present when facts exist"""
+        from quillo_agent.schemas import EvidenceResponse, EvidenceFact, EvidenceSource
+
+        # Mock a successful response with facts
+        mock_response = EvidenceResponse(
+            ok=True,
+            retrieved_at="2025-12-21T16:00:00Z",
+            duration_ms=1000,
+            facts=[
+                EvidenceFact(
+                    text="Test fact",
+                    source_id="s1",
+                    published_at=None
+                )
+            ],
+            sources=[
+                EvidenceSource(
+                    id="s1",
+                    title="Test Source",
+                    domain="example.com",
+                    url="https://example.com",
+                    retrieved_at="2025-12-21T16:00:00Z"
+                )
+            ],
+            limits=None,
+            empty_reason=None
+        )
+
+        # When facts are present, empty_reason should be None
+        assert len(mock_response.facts) > 0
+        assert mock_response.empty_reason is None

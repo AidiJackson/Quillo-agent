@@ -435,6 +435,7 @@ export interface EvidenceResponse {
   sources: EvidenceSource[];
   limits?: string | null;
   error?: string | null;
+  empty_reason?: string | null; // v1.1: no_results, ambiguous_query, computed_stat, source_fetch_blocked, unknown
 }
 
 /**

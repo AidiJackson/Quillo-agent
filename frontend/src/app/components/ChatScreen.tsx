@@ -998,6 +998,70 @@ export function ChatScreen() {
                         </div>
                       )}
 
+                      {/* Evidence Guards v1.1: Empty evidence notice */}
+                      {(message.evidenceResult.ok && message.evidenceResult.facts.length === 0) && (
+                        <div className="space-y-3">
+                          {/* Main notice */}
+                          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                            <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                              No verifiable evidence was found for this query.
+                            </p>
+                            <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                              Interpretation is disabled to avoid speculation. Try refining the query.
+                            </p>
+                          </div>
+
+                          {/* Why this can happen hint */}
+                          <div className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 rounded-lg p-3">
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                              Why this can happen:
+                            </p>
+                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                              This question may be ambiguous (e.g., season vs calendar year), require calculation (e.g., win percentage), or rely on sources that can't be fetched.
+                            </p>
+                          </div>
+
+                          {/* Query refinement suggestions */}
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              Try refining your query:
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => {
+                                  const originalQuery = message.content.replace('Evidence retrieved for: "', '').replace('"', '');
+                                  setInput(`/evidence ${originalQuery} 2024 calendar year`);
+                                }}
+                                disabled={loading}
+                                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                + Add timeframe (e.g., "2024 calendar year")
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const originalQuery = message.content.replace('Evidence retrieved for: "', '').replace('"', '');
+                                  setInput(`/evidence ${originalQuery} raw stats wins losses`);
+                                }}
+                                disabled={loading}
+                                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                + Try raw stats instead of percentages
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const originalQuery = message.content.replace('Evidence retrieved for: "', '').replace('"', '');
+                                  setInput(`/evidence ${originalQuery} official report`);
+                                }}
+                                disabled={loading}
+                                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                + Add "official report"
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Facts */}
                       {message.evidenceResult.ok && message.evidenceResult.facts.length > 0 && (
                         <div className="space-y-2">
@@ -1092,43 +1156,67 @@ export function ChatScreen() {
                   )}
                 </div>
 
-                {/* Evidence Layer v1: Post-evidence action buttons */}
-                {message.role === 'evidence' && message.evidenceResult?.ok && (
+                {/* Evidence Layer v1.1: Post-evidence action buttons with Authority Guard */}
+                {message.role === 'evidence' && message.evidenceResult && (
                   <div className="space-y-1.5">
-                    <div className="flex gap-2 flex-wrap">
-                      <button
-                        onClick={() => {
-                          setInput(`Based on the evidence above, `);
-                        }}
-                        disabled={loading}
-                        className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-[12px] hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                      >
-                        <Brain className="w-3 h-3" />
-                        Ask Quillo to interpret this evidence
-                      </button>
-                      <button
-                        onClick={() => handleBringInAgentsForMessage(`Analyze this evidence: ${message.content}`)}
-                        disabled={loading}
-                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                      >
-                        <Brain className="w-3 h-3" />
-                        Get second opinions on this evidence
-                      </button>
-                      <button
-                        onClick={() => {
-                          const query = message.content.replace('Evidence retrieved for: "', '').replace('"', '');
-                          setInput(`/evidence ${query}`);
-                        }}
-                        disabled={loading}
-                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                        Refine evidence query
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground pl-1">
-                      Optional — interpret evidence, get other perspectives, or refine your search
-                    </p>
+                    {(() => {
+                      // Authority Guard: Disable interpretation when no facts found
+                      const hasEvidence = message.evidenceResult.ok && message.evidenceResult.facts.length > 0;
+
+                      return (
+                        <>
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              onClick={() => {
+                                if (!hasEvidence) return; // Authority Guard: prevent action
+                                setInput(`Based on the evidence above, `);
+                              }}
+                              disabled={loading || !hasEvidence}
+                              className={`px-3 py-1.5 rounded-[12px] transition-all text-xs font-medium flex items-center gap-1.5 ${
+                                hasEvidence
+                                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50'
+                                  : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <Brain className="w-3 h-3" />
+                              Ask Quillo to interpret this evidence
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (!hasEvidence) return; // Authority Guard: prevent action
+                                handleBringInAgentsForMessage(`Analyze this evidence: ${message.content}`);
+                              }}
+                              disabled={loading || !hasEvidence}
+                              className={`px-3 py-1.5 rounded-[12px] transition-all text-xs font-medium flex items-center gap-1.5 ${
+                                hasEvidence
+                                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                  : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <Brain className="w-3 h-3" />
+                              Get second opinions on this evidence
+                            </button>
+                            <button
+                              onClick={() => {
+                                const query = message.content.replace('Evidence retrieved for: "', '').replace('"', '');
+                                setInput(`/evidence ${query}`);
+                              }}
+                              disabled={loading}
+                              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Refine evidence query
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground pl-1">
+                            {hasEvidence
+                              ? "Optional — interpret evidence, get other perspectives, or refine your search"
+                              : "Interpretation disabled (no evidence found) — refine your query to try again"
+                            }
+                          </p>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
 
