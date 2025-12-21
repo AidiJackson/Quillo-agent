@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle } from 'lucide-react';
-import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, AskResponse, ConfigResponse } from '@/lib/quilloApi';
+import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, MultiAgentMessage, AskResponse, ConfigResponse } from '@/lib/quilloApi';
 import {
   Dialog,
   DialogContent,
@@ -17,10 +17,19 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  model?: string; // Model used for response (raw mode)
   judgmentResult?: JudgmentResponse;
   routeResult?: RouteResponse;
   executeResult?: ExecuteResponse;
   showProceedButtons?: boolean;
+  multiAgentMeta?: {
+    provider: string;
+    fallback_reason?: string | null;
+    peers_unavailable?: boolean;
+    userText: string;
+    allMessages: MultiAgentMessage[];
+  }; // For multi-agent transcript header
+  agentMeta?: MultiAgentMessage; // Per-message agent metadata
 }
 
 /**
@@ -247,6 +256,118 @@ function IntelligenceStatusBadge({
 }
 
 /**
+ * Agent Status Badge Component (for individual agent messages)
+ */
+function AgentStatusBadge({ message }: { message: MultiAgentMessage }) {
+  if (message.live) {
+    const modelShort = message.model_id?.split('/')[1] || message.model_id;
+    return (
+      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+        <Zap className="w-2.5 h-2.5" />
+        Live
+        {modelShort && <span className="text-[10px] opacity-70">({modelShort})</span>}
+      </div>
+    );
+  }
+
+  const reasonText = message.unavailable_reason === 'rate_limited' ? 'Rate-limited' :
+                     message.unavailable_reason === 'timeout' ? 'Timeout' :
+                     message.unavailable_reason === 'not_found' ? 'Not found' :
+                     'Unavailable';
+  return (
+    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+      <WifiOff className="w-2.5 h-2.5" />
+      {reasonText}
+    </div>
+  );
+}
+
+/**
+ * Multi-Agent Provider Badge Component
+ */
+function MultiAgentProviderBadge({
+  provider,
+  fallbackReason,
+  peersUnavailable,
+  messages,
+  onRetry
+}: {
+  provider: string;
+  fallbackReason?: string | null;
+  peersUnavailable?: boolean;
+  messages: MultiAgentMessage[];
+  onRetry?: () => void;
+}) {
+  const isLive = provider === 'openrouter';
+  const failedAgents = messages.filter(m => !m.live && m.agent !== 'quillo');
+  const hasSomeFailures = failedAgents.length > 0;
+
+  return (
+    <div className="mb-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+            isLive
+              ? hasSomeFailures
+                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+          }`}
+        >
+          {isLive ? (
+            <>
+              <Zap className="w-3 h-3" />
+              {hasSomeFailures ? 'Partial Live' : 'Live'}
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-3 h-3" />
+              Fallback
+            </>
+          )}
+        </div>
+
+        {isLive && hasSomeFailures && onRetry && (
+          <button
+            onClick={onRetry}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+          >
+            <Play className="w-3 h-3" />
+            Retry {failedAgents.length} unavailable
+          </button>
+        )}
+
+        {!isLive && onRetry && (
+          <button
+            onClick={onRetry}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+          >
+            <Play className="w-3 h-3" />
+            Retry live
+          </button>
+        )}
+      </div>
+
+      {!isLive && (
+        <p className="text-xs text-muted-foreground">
+          Live models were unavailable for this run — showing fallback output.
+        </p>
+      )}
+      {isLive && peersUnavailable && (
+        <p className="text-xs text-muted-foreground">
+          Quillo responded live, but all peer agents were unavailable.
+        </p>
+      )}
+      {isLive && hasSomeFailures && !peersUnavailable && (
+        <p className="text-xs text-muted-foreground">
+          Some agents were unavailable — showing partial live output.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * Stakes Badge Component
  */
 function StakesBadge({ stakes }: { stakes: 'low' | 'medium' | 'high' }) {
@@ -336,7 +457,7 @@ export function ChatScreen() {
 
     try {
       if (rawChatMode) {
-        // RAW MODE: Use /ask for real LLM output
+        // RAW CHAT V1: Use /ask for real LLM output, no judgment/contract coupling
         const askResult = await ask(userInput, 'demo');
 
         // Update intelligence status based on model
@@ -349,6 +470,7 @@ export function ChatScreen() {
             role: 'assistant',
             content: `I'm offline right now — hit Connect to enable live models.`,
             timestamp: new Date(),
+            model: askResult.model,
           };
           setMessages((prev) => [...prev, offlineMessage]);
           return;
@@ -360,25 +482,9 @@ export function ChatScreen() {
           role: 'assistant',
           content: askResult.answer,
           timestamp: new Date(),
+          model: askResult.model,
         };
         setMessages((prev) => [...prev, aiMessage]);
-
-        // Optional: Call judgment for stakes badge only (non-blocking)
-        try {
-          const judgmentResult = await judgment(userInput, 'demo');
-          setLastUserMessage({ text: userInput, judgmentResult });
-
-          // Update the message with judgment metadata
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === aiMessage.id
-                ? { ...msg, judgmentResult }
-                : msg
-            )
-          );
-        } catch (error) {
-          console.warn('Judgment metadata failed (non-critical):', error);
-        }
       } else {
         // ADVANCED MODE: Use judgment layer (existing behavior)
         const judgmentResult = await judgment(userInput, 'demo');
@@ -482,6 +588,50 @@ export function ChatScreen() {
     );
   };
 
+  const handleBringInAgentsForMessage = async (userText: string) => {
+    // Raw mode: Bring in other agents for a specific user message
+    setLoading(true);
+
+    try {
+      // Call multi-agent chat with the user message
+      const multiAgentResult = await multiAgent(userText, 'demo');
+
+      // Add each agent message to the chat, with meta on the first one
+      multiAgentResult.messages.forEach((msg, idx) => {
+        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'deepseek' ? 'DeepSeek' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
+        const agentMessage: Message = {
+          id: (Date.now() + idx + 1).toString(),
+          role: 'assistant',
+          content: `**${agentLabel}:** ${msg.content}`,
+          timestamp: new Date(),
+          agentMeta: msg, // NEW: per-message agent metadata
+          // Add meta to first message for the summary badge
+          ...(idx === 0 && {
+            multiAgentMeta: {
+              provider: multiAgentResult.provider,
+              fallback_reason: multiAgentResult.fallback_reason,
+              peers_unavailable: multiAgentResult.peers_unavailable || false,
+              userText,
+              allMessages: multiAgentResult.messages
+            }
+          }),
+        };
+        setMessages(prev => [...prev, agentMessage]);
+      });
+    } catch (error) {
+      console.error('Multi-agent chat failed:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `I encountered an error bringing in other perspectives: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleBringInAgents = async (messageId: string) => {
     // Find the message and get the original user text
     const message = messages.find(msg => msg.id === messageId);
@@ -501,35 +651,7 @@ export function ChatScreen() {
       )
     );
 
-    setLoading(true);
-
-    try {
-      // Call multi-agent chat with the original user message
-      const multiAgentResult = await multiAgent(userMessage.content, 'demo');
-
-      // Add each agent message to the chat
-      multiAgentResult.messages.forEach((msg, idx) => {
-        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'grok' ? 'Grok' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
-        const agentMessage: Message = {
-          id: (Date.now() + idx + 1).toString(),
-          role: 'assistant',
-          content: `**${agentLabel}:** ${msg.content}`,
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, agentMessage]);
-      });
-    } catch (error) {
-      console.error('Multi-agent chat failed:', error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `I encountered an error bringing in other perspectives: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setLoading(false);
-    }
+    await handleBringInAgentsForMessage(userMessage.content);
   };
 
   const handleContinueSolo = (messageId: string) => {
@@ -562,14 +684,22 @@ export function ChatScreen() {
       // Call multi-agent chat
       const multiAgentResult = await multiAgent(userInput, 'demo');
 
-      // Add each agent message to the chat
+      // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
-        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'grok' ? 'Grok' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
+        const agentLabel = msg.agent === 'quillo' ? 'Quillo' : msg.agent === 'claude' ? 'Claude' : msg.agent === 'deepseek' ? 'DeepSeek' : msg.agent === 'gemini' ? 'Gemini' : msg.agent;
         const agentMessage: Message = {
           id: (Date.now() + idx + 1).toString(),
           role: 'assistant',
           content: `**${agentLabel}:** ${msg.content}`,
           timestamp: new Date(),
+          // Add meta to first message for the badge
+          ...(idx === 0 && {
+            multiAgentMeta: {
+              provider: multiAgentResult.provider,
+              fallback_reason: multiAgentResult.fallback_reason,
+              userText: userInput
+            }
+          }),
         };
         setMessages(prev => [...prev, agentMessage]);
       });
@@ -743,6 +873,17 @@ export function ChatScreen() {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div className={`max-w-[80%] space-y-2`}>
+                {/* Multi-Agent Provider Badge (shown above first agent message) */}
+                {message.multiAgentMeta && (
+                  <MultiAgentProviderBadge
+                    provider={message.multiAgentMeta.provider}
+                    fallbackReason={message.multiAgentMeta.fallback_reason}
+                    peersUnavailable={message.multiAgentMeta.peers_unavailable}
+                    messages={message.multiAgentMeta.allMessages}
+                    onRetry={message.multiAgentMeta.provider !== 'openrouter' ? () => handleBringInAgentsForMessage(message.multiAgentMeta!.userText) : undefined}
+                  />
+                )}
+
                 <div
                   className={`${
                     message.role === 'user'
@@ -750,57 +891,82 @@ export function ChatScreen() {
                       : 'bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-border'
                   } rounded-[20px] px-5 py-3 shadow-lg`}
                 >
+                  {/* Per-agent status badge for multi-agent messages */}
+                  {message.agentMeta && (
+                    <div className="mb-2">
+                      <AgentStatusBadge message={message.agentMeta} />
+                    </div>
+                  )}
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-white/70' : 'text-muted-foreground'}`}>
                     {message.timestamp.toLocaleTimeString()}
                   </p>
                 </div>
 
-                {/* Stakes Badge */}
-                {message.judgmentResult && (
-                  <div className="flex items-center gap-2">
-                    <StakesBadge stakes={message.judgmentResult.stakes} />
-                  </div>
-                )}
-
-                {/* Proceed/Not Yet Buttons */}
-                {message.showProceedButtons && message.judgmentResult?.suggested_next_step !== 'add_agents' && (
+                {/* RAW MODE: Bring in agents button for user messages */}
+                {rawChatMode && message.role === 'user' && (
                   <div className="flex gap-2">
                     <button
-                      onClick={() => handleProceed(message.id)}
+                      onClick={() => handleBringInAgentsForMessage(message.content)}
                       disabled={loading}
-                      className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                     >
-                      Proceed
-                    </button>
-                    <button
-                      onClick={() => handleNotYet(message.id)}
-                      disabled={loading}
-                      className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Not yet
+                      <Brain className="w-3 h-3" />
+                      Bring in other agents
                     </button>
                   </div>
                 )}
 
-                {/* Agent Suggestion Buttons (v1) */}
-                {message.judgmentResult?.suggested_next_step === 'add_agents' && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleBringInAgents(message.id)}
-                      disabled={loading}
-                      className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Bring in a second opinion
-                    </button>
-                    <button
-                      onClick={() => handleContinueSolo(message.id)}
-                      disabled={loading}
-                      className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Continue with you
-                    </button>
-                  </div>
+                {/* ADVANCED MODE ONLY: Stakes, Proceed, Agent Suggestion Buttons */}
+                {!rawChatMode && (
+                  <>
+                    {/* Stakes Badge */}
+                    {message.judgmentResult && (
+                      <div className="flex items-center gap-2">
+                        <StakesBadge stakes={message.judgmentResult.stakes} />
+                      </div>
+                    )}
+
+                    {/* Proceed/Not Yet Buttons */}
+                    {message.showProceedButtons && message.judgmentResult?.suggested_next_step !== 'add_agents' && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleProceed(message.id)}
+                          disabled={loading}
+                          className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Proceed
+                        </button>
+                        <button
+                          onClick={() => handleNotYet(message.id)}
+                          disabled={loading}
+                          className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Not yet
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Agent Suggestion Buttons (v1) */}
+                    {message.judgmentResult?.suggested_next_step === 'add_agents' && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleBringInAgents(message.id)}
+                          disabled={loading}
+                          className="px-4 py-2 bg-primary text-white rounded-[12px] hover:bg-primary/90 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Bring in a second opinion
+                        </button>
+                        <button
+                          onClick={() => handleContinueSolo(message.id)}
+                          disabled={loading}
+                          className="px-4 py-2 bg-accent text-accent-foreground rounded-[12px] hover:bg-accent/80 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Continue with you
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Route Result Card */}

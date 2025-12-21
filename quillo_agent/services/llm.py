@@ -281,8 +281,10 @@ Respond with ONLY this JSON format (no markdown, no other text):
             System prompt string
         """
         if settings.raw_chat_mode:
-            # Raw mode: minimal, ChatGPT-like prompt
-            return """You are Quillo, a helpful AI assistant. Provide clear, direct answers to user questions."""
+            # Raw mode: minimal, ChatGPT-like prompt with model identity guidance
+            return """You are Quillo, a helpful AI assistant. Provide clear, direct answers to user questions.
+
+IMPORTANT: If asked about your model identity, NEVER claim to be GPT-3.5, GPT-4, or GPT-5. Instead, say: "I'm running on the model configured for this app. If you want, I can show the exact provider/model string from settings." """
         else:
             # Advanced mode: Quillopreneur specialist
             return """You are Quillopreneur, an expert business advisor specializing in entrepreneurship,
@@ -307,25 +309,36 @@ Be concise, specific, and helpful. Focus on the user's question."""
             logger.debug("OpenRouter API key not configured")
             return None
 
-        # Truncate inputs for safety
-        safe_text = self._truncate_user_input(text)
-        safe_profile = self._truncate_user_input(profile_excerpt, max_chars=300)
+        # In RAW_CHAT_MODE: truly raw (no truncation, no profile, no system prompt)
+        if settings.raw_chat_mode:
+            # Use text as-is without truncation
+            user_message = text
+            # No system message in raw mode
+            messages = [{"role": "user", "content": user_message}]
+            logger.debug("RAW_CHAT_MODE: sending user message without system prompt or profile")
+        else:
+            # Advanced mode: apply safety measures
+            # Truncate inputs for safety
+            safe_text = self._truncate_user_input(text)
+            safe_profile = self._truncate_user_input(profile_excerpt, max_chars=300)
 
-        # System message based on mode
-        system_message = self._get_system_prompt()
+            # System message based on mode
+            system_message = self._get_system_prompt()
 
-        # User message with optional profile context
-        user_message = safe_text
-        if safe_profile:
-            user_message = f"User context: {safe_profile}\n\nQuestion: {safe_text}"
+            # User message with optional profile context
+            user_message = safe_text
+            if safe_profile:
+                user_message = f"User context: {safe_profile}\n\nQuestion: {safe_text}"
+
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ]
 
         try:
             model = self._get_openrouter_model(for_chat=True)  # Use chat model in raw mode
             result = await self._openrouter_chat(
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_message}
-                ],
+                messages=messages,
                 model=model,
                 max_tokens=1000,
                 timeout=30.0

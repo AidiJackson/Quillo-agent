@@ -168,6 +168,74 @@ async def ui_config():
     )
 
 
+class RawAuditResponse(BaseModel):
+    """Raw mode audit response for QA verification (no secrets)"""
+    raw_chat_mode: bool
+    message_shape: str  # "user_only" | "system+user"
+    profile_prepending_enabled: bool
+    truncation_enabled: bool
+    offline_template_style: str  # "neutral" | "advisor"
+
+
+@router.get("/raw-audit", response_model=RawAuditResponse)
+async def ui_raw_audit():
+    """
+    Raw mode audit endpoint for QA verification (no auth required, no secrets).
+
+    Returns diagnostic information about RAW_CHAT_MODE behavior:
+    - Whether raw mode is enabled
+    - Message shape (user_only vs system+user)
+    - Whether profile prepending is active
+    - Whether truncation is active
+    - Offline template style (neutral vs advisor)
+
+    This endpoint is unauthenticated so it can be used for diagnostics.
+
+    Returns:
+        RawAuditResponse with raw mode configuration details
+    """
+    is_raw_mode = settings.raw_chat_mode
+
+    return RawAuditResponse(
+        raw_chat_mode=is_raw_mode,
+        message_shape="user_only" if is_raw_mode else "system+user",
+        profile_prepending_enabled=not is_raw_mode,
+        truncation_enabled=not is_raw_mode,
+        offline_template_style="neutral" if is_raw_mode else "advisor"
+    )
+
+
+class ModelStatusResponse(BaseModel):
+    """Model status response (diagnostic, no secrets)"""
+    raw_chat_model: str
+    claude_agent_model: str
+    challenger_agent_model: str
+    gemini_agent_model: str
+    primary_synthesis_model: str
+
+
+@router.get("/model-status", response_model=ModelStatusResponse)
+async def ui_model_status():
+    """
+    Model status diagnostic endpoint (no auth required, no secrets).
+
+    Returns the configured OpenRouter model strings for each agent.
+    Useful for debugging multi-agent reliability issues.
+
+    This endpoint is unauthenticated so it can be used for diagnostics.
+
+    Returns:
+        ModelStatusResponse with all configured model strings
+    """
+    return ModelStatusResponse(
+        raw_chat_model=settings.openrouter_chat_model,
+        claude_agent_model=settings.openrouter_claude_agent_model,
+        challenger_agent_model=settings.openrouter_challenger_agent_model,
+        gemini_agent_model=settings.openrouter_gemini_agent_model,
+        primary_synthesis_model=settings.openrouter_chat_model
+    )
+
+
 @router.post("/judgment", response_model=JudgmentResponse)
 @limiter.limit("30/minute")
 async def ui_explain_judgment(
@@ -578,10 +646,11 @@ async def ui_multi_agent_chat(
     trace_id = str(uuid.uuid4())
 
     # Run multi-agent chat
-    messages_data, provider = await run_multi_agent_chat(
+    messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
         text=payload.text,
         user_id=payload.user_id,
-        agents=payload.agents
+        agents=payload.agents,
+        trace_id=trace_id
     )
 
     # Convert to MultiAgentMessage models
@@ -590,5 +659,7 @@ async def ui_multi_agent_chat(
     return MultiAgentResponse(
         messages=messages,
         provider=provider,
-        trace_id=trace_id
+        trace_id=trace_id,
+        fallback_reason=fallback_reason,
+        peers_unavailable=peers_unavailable
     )

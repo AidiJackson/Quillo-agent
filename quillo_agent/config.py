@@ -23,8 +23,13 @@ class Settings(BaseSettings):
     openrouter_fast_model: str = "anthropic/claude-3-haiku"
     openrouter_balanced_model: str = "anthropic/claude-3.5-sonnet"
     openrouter_premium_model: str = "anthropic/claude-opus-4"
-    openrouter_gemini_model: str = "google/gemini-2.0-flash-exp:free"
+    openrouter_gemini_model: str = "google/gemini-2.0-flash-thinking-exp"  # PAID model (no throttling)
     openrouter_chat_model: str = "openai/gpt-4o-mini"  # Default chat model for raw mode
+
+    # Multi-agent specific models (env-configurable for reliability)
+    openrouter_claude_agent_model: str = "anthropic/claude-3.5-sonnet"
+    openrouter_challenger_agent_model: str = "deepseek/deepseek-chat"  # DeepSeek V3 (challenger perspective)
+    openrouter_gemini_agent_model: str = "google/gemini-2.5-flash"
 
     # Anthropic LLM provider (direct)
     anthropic_api_key: str = ""

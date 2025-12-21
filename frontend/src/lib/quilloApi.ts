@@ -347,6 +347,9 @@ export interface MultiAgentMessage {
   role: string;
   agent: string;
   content: string;
+  model_id?: string | null;
+  live: boolean;
+  unavailable_reason?: string | null;
 }
 
 export interface MultiAgentRequest {
@@ -359,6 +362,8 @@ export interface MultiAgentResponse {
   messages: MultiAgentMessage[];
   provider: string;
   trace_id: string;
+  fallback_reason?: string | null;
+  peers_unavailable?: boolean;
 }
 
 /**

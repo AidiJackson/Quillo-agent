@@ -34,7 +34,11 @@
       "Bash(ls:*)",
       "Bash(git tag:*)",
       "Bash(pip install:*)",
-      "Bash(npm run typecheck:*)"
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run build:*)",
+      "Bash(pytest:*)",
+      "Bash(echo:*)",
+      "Bash(test:*)"
     ]
   }
 }

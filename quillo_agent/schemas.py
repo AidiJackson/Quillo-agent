@@ -134,6 +134,9 @@ class MultiAgentMessage(BaseModel):
     role: str = Field(..., description="Message role: 'assistant' or 'user'")
     agent: str = Field(..., description="Agent name: 'quillo', 'claude', 'grok'")
     content: str = Field(..., description="Message content")
+    model_id: Optional[str] = Field(None, description="Model ID attempted (e.g., 'anthropic/claude-3.5-sonnet')")
+    live: bool = Field(True, description="True if live response, False if unavailable placeholder")
+    unavailable_reason: Optional[str] = Field(None, description="Reason bucket if live=False: 'rate_limited', 'not_found', 'timeout', 'http_error', 'exception'")
 
 
 class MultiAgentRequest(BaseModel):
@@ -148,3 +151,5 @@ class MultiAgentResponse(BaseModel):
     messages: List[MultiAgentMessage] = Field(..., description="Multi-agent conversation messages")
     provider: str = Field(..., description="Provider used: 'openrouter' or 'template'")
     trace_id: str = Field(..., description="Trace identifier for debugging")
+    fallback_reason: Optional[str] = Field(None, description="Reason for fallback if provider is 'template' (e.g., 'openrouter_timeout', 'openrouter_rate_limited', 'openrouter_http_error', 'openrouter_exception', 'openrouter_key_missing')")
+    peers_unavailable: bool = Field(False, description="True if Quillo succeeded but all peer agents failed")

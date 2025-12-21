@@ -1,0 +1,168 @@
+TASK: Verify Quillo “Raw Chat Mode” + Multi-Agent models are configured correctly end-to-end.
+
+Goal
+
+I want you to audit and prove (with commands + outputs) that:
+
+Raw chat replies come from OpenRouter chat model (OPENROUTER_CHAT_MODEL, default openai/gpt-4o-mini)
+
+Raw chat does NOT fall back to Haiku/Claude when OpenRouter is available
+
+Multi-agent endpoint uses the correct model mapping:
+
+Quillo (primary/synthesis) → chat model
+
+Claude → Sonnet
+
+Grok → Grok
+
+Gemini → Gemini
+
+UI token auth is correctly configured (frontend token matches backend token requirement)
+
+Replit Run/Stop workflow is working and servers are reachable.
+
+Step-by-step Actions (do these exactly, one at a time)
+Step 1 — Start the app via Replit workflow
+
+Use the Run button / workflow Start Uboolia (or the project’s primary workflow).
+
+Confirm backend is listening on port 8000 and frontend on 5000 (or whatever is set in start-dev.sh).
+
+Output required: show the process logs OR successful curl results below.
+
+Step 2 — Print current environment values (no secrets leaked)
+
+Run in shell:
+
+Print whether these are set:
+
+OPENROUTER_API_KEY (print set or missing)
+
+OPENROUTER_CHAT_MODEL (print literal value or blank)
+
+RAW_CHAT_MODE (print literal value)
+
+QUILLO_UI_TOKEN and VITE_UI_TOKEN (print only whether both set)
+
+Then confirm token match without printing tokens, by printing only:
+
+MATCH: True/False
+
+Use the hashing method already used in this project if available.
+
+Output required: shell output showing MATCH: True.
+
+Step 3 — Confirm backend health + auth-status
+
+Run:
+
+curl -s http://localhost:8000/ui/api/health
+
+curl -s http://localhost:8000/ui/api/auth-status
+
+Output required: JSON outputs.
+
+Step 4 — Confirm raw chat mode flag is truly ON (backend)
+
+Find and print raw mode config from the settings object.
+
+In shell, run a Python one-liner that prints:
+
+settings.raw_chat_mode
+
+settings.openrouter_chat_model
+
+settings.openrouter_api_key (print set/missing)
+
+Output required: confirms raw_chat_mode is True and chat model is openai/gpt-4o-mini (or whatever configured).
+
+Step 5 — Test /ui/api/ask and prove it uses the chat model
+
+Make a request to /ui/api/ask using the UI token header.
+
+Command must include:
+
+-H "X-UI-Token: $VITE_UI_TOKEN"
+
+Test prompt:
+
+“Reply naturally in 2 sentences and ask me 1 quick question.”
+
+Pass condition:
+
+response JSON model contains: openrouter/openai/… (or whatever OPENROUTER_CHAT_MODEL is)
+
+response must not show anthropic/claude-3-haiku or any Claude model
+
+Output required: paste the full JSON.
+
+If it fails, do NOT guess—proceed to Step 6.
+
+Step 6 — If /ask still returns Haiku, locate the code path
+
+Only if Step 5 fails:
+
+Open the router that handles /ui/api/ask and confirm it calls the raw mode logic (OpenRouter-only).
+
+Identify why it is using Haiku (wrong router, wrong endpoint, or wrong fallback).
+
+Fix must be minimal: raw mode must force OpenRouter chat model.
+
+Output required: explain root cause + file/line references + minimal patch.
+
+Step 7 — Test /ui/api/multi-agent model mapping
+
+Call /ui/api/multi-agent (with UI token header) and ask:
+
+“Should I pivot or double down? Give me 1 paragraph each and then a synthesis.”
+
+Pass condition:
+
+Response transcript includes 5 messages in order:
+
+Quillo → Claude → Grok → Gemini → Quillo
+
+Each message includes correct agent label
+
+The response JSON includes model identifiers per agent (if implemented) OR verify via backend config mapping.
+
+Output required: paste transcript output and confirm mapping from code.
+
+Step 8 — Final report (must be short and decisive)
+
+Provide a checklist with ✅/❌ for:
+
+Raw chat uses chat model
+
+No Claude/Haiku in raw chat
+
+Multi-agent uses correct models
+
+Tokens match and auth enforced
+
+Workflow start/stop works
+
+If anything is ❌, provide the exact next fix.
+
+Constraints / Rules
+
+Do not redesign UI.
+
+Do not add new features.
+
+Do not print secret tokens.
+
+If a fix is needed, create a rollback checkpoint tag first.
+
+Keep fixes atomic (single purpose per commit).
+
+Deliverable
+
+Reply with:
+
+Command outputs proving each step
+
+A final ✅/❌ checklist
+
+Any minimal patch + commit hash (only if required)
