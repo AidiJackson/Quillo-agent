@@ -243,7 +243,7 @@ Respond with ONLY this JSON format (no markdown, no other text):
                         "Authorization": f"Bearer {self.openrouter_key}",
                         "Content-Type": "application/json",
                         "HTTP-Referer": "https://quillography.ai",  # Optional: for rankings
-                        "X-Title": "Quillo Agent",  # Optional: for rankings
+                        "X-Title": "Uorin Agent",  # Optional: for rankings
                     },
                     json={
                         "model": model,

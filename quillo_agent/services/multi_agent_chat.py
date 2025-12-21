@@ -431,7 +431,7 @@ async def _call_openrouter(
         "Authorization": f"Bearer {settings.openrouter_api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://quillography.ai",
-        "X-Title": "Quillo Multi-Agent Chat"
+        "X-Title": "Uorin Multi-Agent Chat"
     }
 
     payload = {

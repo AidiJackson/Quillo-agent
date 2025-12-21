@@ -42,7 +42,7 @@ def create_app() -> FastAPI:
         Configured FastAPI app instance
     """
     app = FastAPI(
-        title="Quillo Agent",
+        title="Uorin Agent",
         description="AI Chief of Staff orchestrator - MVP",
         version="0.1.0",
         lifespan=lifespan

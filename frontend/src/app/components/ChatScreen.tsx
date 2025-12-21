@@ -193,7 +193,7 @@ function ConnectAIModal() {
               </div>
               <div className="text-sm">
                 <p className="font-medium">Restart Backend</p>
-                <p className="text-muted-foreground">Restart the Quillo Agent API to apply changes</p>
+                <p className="text-muted-foreground">Restart the Uorin Agent API to apply changes</p>
               </div>
             </div>
           </div>
@@ -356,7 +356,7 @@ function MultiAgentProviderBadge({
       )}
       {isLive && peersUnavailable && (
         <p className="text-xs text-muted-foreground">
-          Quillo responded live, but all peer agents were unavailable.
+          Uorin responded live, but all peer agents were unavailable.
         </p>
       )}
       {isLive && hasSomeFailures && !peersUnavailable && (
@@ -667,7 +667,7 @@ export function ChatScreen() {
         const isSynthesis = msg.agent === 'quillo' && idx === multiAgentResult.messages.length - 1;
 
         const agentLabel = msg.agent === 'quillo' ?
-          (isSynthesis ? 'Quillo — Synthesis' : 'Quillo') :
+          (isSynthesis ? 'Uorin — Synthesis' : 'Uorin') :
           msg.agent === 'claude' ? 'Claude' :
           msg.agent === 'deepseek' ? 'DeepSeek' :
           msg.agent === 'gemini' ? 'Gemini' :
@@ -764,7 +764,7 @@ export function ChatScreen() {
         const isSynthesis = msg.agent === 'quillo' && idx === multiAgentResult.messages.length - 1;
 
         const agentLabel = msg.agent === 'quillo' ?
-          (isSynthesis ? 'Quillo — Synthesis' : 'Quillo') :
+          (isSynthesis ? 'Uorin — Synthesis' : 'Uorin') :
           msg.agent === 'claude' ? 'Claude' :
           msg.agent === 'deepseek' ? 'DeepSeek' :
           msg.agent === 'gemini' ? 'Gemini' :
@@ -949,7 +949,7 @@ export function ChatScreen() {
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.length === 0 && (
             <div className="text-center text-muted-foreground py-20">
-              <p className="text-lg font-medium mb-2">Welcome to Quillo</p>
+              <p className="text-lg font-medium mb-2">Welcome to Uorin</p>
               <p className="text-sm">Start chatting to get conversational assistance</p>
             </div>
           )}
@@ -1179,7 +1179,7 @@ export function ChatScreen() {
                               } disabled:opacity-50 disabled:cursor-not-allowed`}
                             >
                               <Brain className="w-3 h-3" />
-                              Ask Quillo to interpret this evidence
+                              Ask Uorin to interpret this evidence
                             </button>
                             <button
                               onClick={() => {
@@ -1233,7 +1233,7 @@ export function ChatScreen() {
                         Get second opinions
                         {/* Tooltip */}
                         <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
-                          Claude, Gemini, and DeepSeek will each reply once. Quillo will summarize.
+                          Claude, Gemini, and DeepSeek will each reply once. Uorin will summarize.
                           <div className="absolute top-full left-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
                         </div>
                       </button>
@@ -1344,7 +1344,7 @@ export function ChatScreen() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !loading && handleSend()}
-                placeholder="Message Quillo..."
+                placeholder="Message Uorin..."
                 disabled={loading}
                 className="flex-1 px-4 py-3 bg-input-background border border-border rounded-[16px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
               />
@@ -1368,7 +1368,7 @@ export function ChatScreen() {
                 Get second opinions
                 {/* Tooltip */}
                 <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
-                  Claude, Gemini, and DeepSeek will each reply once. Quillo will summarize.
+                  Claude, Gemini, and DeepSeek will each reply once. Uorin will summarize.
                   <div className="absolute top-full right-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
                 </div>
               </button>

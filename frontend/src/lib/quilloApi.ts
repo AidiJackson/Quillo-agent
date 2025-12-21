@@ -1,5 +1,5 @@
 /**
- * Quillo API Client
+ * Uorin API Client
  *
  * Uses server-side proxy (BFF) to avoid exposing API keys in the browser.
  * The UI token is for dev-only scaffolding; production will use session auth.
