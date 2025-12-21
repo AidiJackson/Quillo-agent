@@ -38,7 +38,9 @@
       "Bash(npm run build:*)",
       "Bash(pytest:*)",
       "Bash(echo:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)"
     ]
   }
 }
