@@ -318,6 +318,12 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
             "unavailable_reason": synth_reason
         })
 
+    # Log response lengths for all agents (for truncation monitoring)
+    logger.info("Multi-agent response lengths: " + ", ".join([
+        f"{msg['agent']}={len(msg['content'])} chars (live={msg.get('live', True)})"
+        for msg in messages
+    ]))
+
     return messages
 
 
@@ -331,7 +337,7 @@ async def _call_openrouter_safe(
     model: str,
     system_prompt: str,
     user_message: str,
-    max_tokens: int = 300
+    max_tokens: int = 1500
 ) -> tuple[Optional[str], Optional[str]]:
     """
     Safely call OpenRouter, returning (content, error_reason).
@@ -344,6 +350,9 @@ async def _call_openrouter_safe(
     """
     try:
         content = await _call_openrouter(model, system_prompt, user_message, max_tokens)
+        # Log response length for monitoring truncation issues
+        if content:
+            logger.debug(f"OpenRouter response from {model.split('/')[-1]}: {len(content)} chars")
         return (content, None)
     except httpx.TimeoutException:
         return (None, "timeout")
@@ -400,7 +409,7 @@ async def _call_openrouter(
     model: str,
     system_prompt: str,
     user_message: str,
-    max_tokens: int = 300
+    max_tokens: int = 1500
 ) -> str:
     """
     Call OpenRouter chat completion API.
@@ -409,7 +418,7 @@ async def _call_openrouter(
         model: Model ID (e.g., "anthropic/claude-3.5-sonnet")
         system_prompt: System prompt for the agent
         user_message: User's message
-        max_tokens: Max tokens for response
+        max_tokens: Max tokens for response (default 1500 for multi-agent)
 
     Returns:
         Assistant's response content

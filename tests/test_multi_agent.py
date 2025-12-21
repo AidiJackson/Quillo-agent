@@ -338,6 +338,87 @@ class TestMultiAgentDevBypass:
                     assert data["provider"] == "template"
 
 
+class TestMultiAgentTruncation:
+    """Test that responses are not truncated mid-sentence."""
+
+    def test_responses_not_truncated_min_length(self):
+        """Test that live agent responses meet minimum length expectations"""
+        def create_mock_response(model, content):
+            """Create a mock response"""
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "choices": [{"message": {"content": content}}]
+            }
+            return mock_resp
+
+        # Create realistic-length responses (not truncated)
+        mock_responses = {
+            "claude": "Looking at your question, I'd consider the long-term implications first. The key is balancing immediate needs with sustainable outcomes. Whatever path you choose, documentation and clear communication will be critical. I'd recommend starting with a small proof-of-concept to validate the core assumptions before committing to a full implementation. This gives you flexibility to adjust based on early feedback.",
+            "deepseek": "Hold up—before you get too comfortable with that, ask yourself: what if the opposite is true? Sometimes the 'thoughtful' path is just procrastination with better PR. What's the risk of moving fast and adjusting later versus overthinking and missing the window? I'd argue that speed and iteration often beats perfect planning, especially when the market is moving quickly.",
+            "gemini": "Here's a structured view: break this into phases. First, validate your core assumption with user research. Second, test with a small pilot group to gather real feedback. Third, scale what works while maintaining quality. This approach gives you Claude's thoughtfulness without DeepSeek's risk of paralysis. Each phase should have clear success criteria and off-ramps.",
+            "synth": "All three perspectives add value here. My recommendation: use Gemini's phased approach as your framework, with Claude's long-term lens and DeepSeek's urgency check at each phase. The key is balancing speed with validation - move quickly through small experiments rather than slowly through big plans. Quick question: what's the smallest pilot you could run this week to test your core hypothesis?"
+        }
+
+        async def mock_post(url, *args, **kwargs):
+            """Mock httpx.AsyncClient.post"""
+            model = kwargs.get("json", {}).get("model", "")
+
+            if "claude" in model.lower():
+                content = mock_responses["claude"]
+            elif "deepseek" in model.lower():
+                content = mock_responses["deepseek"]
+            elif "gemini" in model.lower():
+                content = mock_responses["gemini"]
+            else:
+                content = mock_responses["synth"]
+
+            return create_mock_response(model, content)
+
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', 'test-key'):
+                with patch('httpx.AsyncClient.post', new=mock_post):
+                    response = client.post(
+                        "/ui/api/multi-agent",
+                        headers={"X-UI-Token": TEST_UI_TOKEN},
+                        json={"text": "Should I build a custom CRM or use an off-the-shelf solution?", "user_id": "test-user"}
+                    )
+                    assert response.status_code == 200
+                    data = response.json()
+
+                    # Verify all live peer responses are substantive (not truncated)
+                    for i, msg in enumerate(data["messages"]):
+                        if msg["agent"] in ["claude", "deepseek", "gemini"] and msg.get("live", True):
+                            # Peer agent responses should be at least 100 chars to be substantive
+                            assert len(msg["content"]) >= 100, \
+                                f"{msg['agent']} response too short ({len(msg['content'])} chars): {msg['content']}"
+
+                            # Should end with proper punctuation (not truncated mid-sentence)
+                            assert msg["content"].rstrip()[-1] in ['.', '!', '?'], \
+                                f"{msg['agent']} response doesn't end with punctuation: {msg['content'][-50:]}"
+
+                        # First quillo message is just a frame, skip it
+                        # Last quillo message (synthesis) should also be substantive
+                        if msg["agent"] == "quillo" and i > 0 and msg.get("live", True):
+                            assert len(msg["content"]) >= 100, \
+                                f"quillo synthesis response too short ({len(msg['content'])} chars): {msg['content']}"
+                            assert msg["content"].rstrip()[-1] in ['.', '!', '?'], \
+                                f"quillo synthesis response doesn't end with punctuation: {msg['content'][-50:]}"
+
+    def test_max_tokens_increased_from_300(self):
+        """Test that max_tokens default has been increased from 300 to prevent truncation"""
+        from quillo_agent.services.multi_agent_chat import _call_openrouter_safe
+        import inspect
+
+        # Get the default value of max_tokens parameter
+        sig = inspect.signature(_call_openrouter_safe)
+        max_tokens_default = sig.parameters['max_tokens'].default
+
+        # Should be at least 1000 (we use 1500)
+        assert max_tokens_default >= 1000, \
+            f"max_tokens default is {max_tokens_default}, should be >= 1000 to prevent truncation"
+
+
 class TestMultiAgentPartialLive:
     """Test partial-live behavior where individual agents can fail independently."""
 
