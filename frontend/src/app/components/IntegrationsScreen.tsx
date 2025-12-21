@@ -48,7 +48,7 @@ export function IntegrationsScreen() {
         <div>
           <h2 className="text-2xl font-semibold">Integrations</h2>
           <p className="text-muted-foreground mt-1">
-            Connect Quillo to your favorite tools and platforms
+            Connect Uorin to your favorite tools and platforms
           </p>
         </div>
 
@@ -61,7 +61,7 @@ export function IntegrationsScreen() {
             <div className="flex-1">
               <h3 className="font-semibold text-lg mb-1">Integrations Coming Soon</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                We're working hard to bring powerful integrations to Quillo. These features will
+                We're working hard to bring powerful integrations to Uorin. These features will
                 enable seamless workflow automation across your entire tech stack.
               </p>
               <div className="flex gap-2">

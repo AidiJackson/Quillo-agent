@@ -53,7 +53,7 @@ export default function App() {
           </button>
           <h1 className="flex items-center gap-2">
             <span className="text-lg font-semibold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              Quillo AI
+              Uorin AI
             </span>
           </h1>
         </div>

@@ -46,7 +46,7 @@ Based on your recent interactions:
           <div>
             <h2 className="text-2xl font-semibold">Memory & Profile</h2>
             <p className="text-muted-foreground mt-1">
-              Customize how Quillo understands and assists you
+              Customize how Uorin understands and assists you
             </p>
           </div>
           <div className="flex gap-2">

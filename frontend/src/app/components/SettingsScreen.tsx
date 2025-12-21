@@ -48,7 +48,7 @@ export function SettingsScreen() {
         <div>
           <h2 className="text-2xl font-semibold">Model Settings</h2>
           <p className="text-muted-foreground mt-1">
-            Configure how Quillo selects and uses AI models
+            Configure how Uorin selects and uses AI models
           </p>
         </div>
 
@@ -153,7 +153,7 @@ export function SettingsScreen() {
           </div>
 
           <p className="text-xs text-muted-foreground mt-4">
-            "Auto" lets Quillo intelligently select the best model for each task. Manual pinning
+            "Auto" lets Uorin intelligently select the best model for each task. Manual pinning
             overrides global settings.
           </p>
         </GlassCard>

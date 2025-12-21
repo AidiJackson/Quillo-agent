@@ -67,7 +67,7 @@ export function AuditLogScreen() {
         <div>
           <h2 className="text-2xl font-semibold">Activity & Audit Log</h2>
           <p className="text-muted-foreground mt-1">
-            See how Quillo processes your requests and makes decisions
+            See how Uorin processes your requests and makes decisions
           </p>
         </div>
 

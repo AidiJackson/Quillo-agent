@@ -46,7 +46,7 @@ export function Sidebar({ activeTab, onTabChange, isMobileOpen, onMobileClose }:
                 <span className="text-white text-xl">Q</span>
               </div>
               <span className="text-xl font-semibold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Quillo AI
+                Uorin AI
               </span>
             </h1>
             <p className="text-xs text-muted-foreground mt-1 ml-12">AI Chief of Staff</p>
