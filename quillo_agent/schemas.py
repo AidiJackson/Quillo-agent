@@ -153,3 +153,36 @@ class MultiAgentResponse(BaseModel):
     trace_id: str = Field(..., description="Trace identifier for debugging")
     fallback_reason: Optional[str] = Field(None, description="Reason for fallback if provider is 'template' (e.g., 'openrouter_timeout', 'openrouter_rate_limited', 'openrouter_http_error', 'openrouter_exception', 'openrouter_key_missing')")
     peers_unavailable: bool = Field(False, description="True if Quillo succeeded but all peer agents failed")
+
+
+class EvidenceFact(BaseModel):
+    """Single fact extracted from evidence sources"""
+    text: str = Field(..., description="Fact statement in neutral language")
+    source_id: str = Field(..., description="Reference to source ID")
+    published_at: Optional[str] = Field(None, description="ISO timestamp when fact was published (if available)")
+
+
+class EvidenceSource(BaseModel):
+    """Source of evidence with metadata"""
+    id: str = Field(..., description="Unique source identifier")
+    title: str = Field(..., description="Page or article title")
+    domain: str = Field(..., description="Domain name (e.g., 'example.com')")
+    url: str = Field(..., description="Full URL to source")
+    retrieved_at: str = Field(..., description="ISO timestamp when source was retrieved")
+
+
+class EvidenceRequest(BaseModel):
+    """Request for evidence retrieval"""
+    query: Optional[str] = Field(None, description="Specific search query (optional)")
+    use_last_message: bool = Field(False, description="Use last user message as query context")
+
+
+class EvidenceResponse(BaseModel):
+    """Response from evidence layer (v1)"""
+    ok: bool = Field(..., description="Whether evidence retrieval succeeded")
+    retrieved_at: str = Field(..., description="ISO timestamp of retrieval")
+    duration_ms: int = Field(..., description="Total duration in milliseconds")
+    facts: List[EvidenceFact] = Field(default_factory=list, description="Extracted neutral facts (max 10)")
+    sources: List[EvidenceSource] = Field(default_factory=list, description="Source metadata (max 8)")
+    limits: Optional[str] = Field(None, description="Optional single-line limitation or missing-data note")
+    error: Optional[str] = Field(None, description="Error message if ok=False")

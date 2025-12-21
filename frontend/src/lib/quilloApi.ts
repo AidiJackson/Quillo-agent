@@ -403,3 +403,72 @@ export async function multiAgent(
 
   return response.json();
 }
+
+/**
+ * Evidence Layer v1 - Manual-only, sourced, non-authorial evidence retrieval
+ */
+
+export interface EvidenceFact {
+  text: string;
+  source_id: string;
+  published_at?: string | null;
+}
+
+export interface EvidenceSource {
+  id: string;
+  title: string;
+  domain: string;
+  url: string;
+  retrieved_at: string;
+}
+
+export interface EvidenceRequest {
+  query?: string | null;
+  use_last_message?: boolean;
+}
+
+export interface EvidenceResponse {
+  ok: boolean;
+  retrieved_at: string;
+  duration_ms: number;
+  facts: EvidenceFact[];
+  sources: EvidenceSource[];
+  limits?: string | null;
+  error?: string | null;
+}
+
+/**
+ * Retrieve evidence with sources and timestamps
+ * Evidence Layer v1: Manual-only, non-authorial facts
+ */
+export async function fetchEvidence(
+  query?: string,
+  useLastMessage?: boolean
+): Promise<EvidenceResponse> {
+  const request: EvidenceRequest = {
+    query: query || null,
+    use_last_message: useLastMessage || false,
+  };
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/evidence`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Evidence retrieval failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}

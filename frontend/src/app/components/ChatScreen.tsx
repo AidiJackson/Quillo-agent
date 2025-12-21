@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
-import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle } from 'lucide-react';
-import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, MultiAgentMessage, AskResponse, ConfigResponse } from '@/lib/quilloApi';
+import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle, Database, RefreshCw } from 'lucide-react';
+import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, fetchEvidence, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, MultiAgentMessage, AskResponse, ConfigResponse, EvidenceResponse } from '@/lib/quilloApi';
 import {
   Dialog,
   DialogContent,
@@ -14,13 +14,14 @@ import {
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'evidence';
   content: string;
   timestamp: Date;
   model?: string; // Model used for response (raw mode)
   judgmentResult?: JudgmentResponse;
   routeResult?: RouteResponse;
   executeResult?: ExecuteResponse;
+  evidenceResult?: EvidenceResponse; // Evidence Layer v1
   showProceedButtons?: boolean;
   multiAgentMeta?: {
     provider: string;
@@ -440,8 +441,72 @@ export function ChatScreen() {
     checkConfig();
   }, []);
 
+  // Evidence Layer v1: Handlers for manual evidence retrieval
+  const handleFetchEvidence = async (query: string) => {
+    setLoading(true);
+
+    try {
+      const evidenceResult = await fetchEvidence(query);
+
+      const evidenceMessage: Message = {
+        id: Date.now().toString(),
+        role: 'evidence',
+        content: `Evidence retrieved for: "${query}"`,
+        timestamp: new Date(),
+        evidenceResult,
+      };
+
+      setMessages((prev) => [...prev, evidenceMessage]);
+    } catch (error) {
+      console.error('Evidence retrieval failed:', error);
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Failed to retrieve evidence: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEvidenceCommand = async (command: string) => {
+    // Parse /evidence command
+    const query = command.replace('/evidence', '').trim();
+
+    if (query) {
+      // User provided query: /evidence <query>
+      setInput('');
+      await handleFetchEvidence(query);
+    } else {
+      // No query provided: use last user message
+      const lastUserMsg = messages.filter(m => m.role === 'user').pop();
+      if (lastUserMsg) {
+        setInput('');
+        await handleFetchEvidence(lastUserMsg.content);
+      } else {
+        // No previous message found
+        setInput('');
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'No previous message found. Please provide a query: /evidence <your query>',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || loading) return;
+
+    // Check for /evidence slash command
+    if (input.trim().startsWith('/evidence')) {
+      await handleEvidenceCommand(input.trim());
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -909,17 +974,95 @@ export function ChatScreen() {
                   className={`${
                     message.role === 'user'
                       ? 'bg-gradient-to-br from-primary to-secondary text-white'
+                      : message.role === 'evidence'
+                      ? 'bg-blue-50 dark:bg-blue-950/30 border-2 border-blue-200 dark:border-blue-800'
                       : 'bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-border'
                   } rounded-[20px] px-5 py-3 shadow-lg`}
                 >
-                  {/* Per-agent status badge for multi-agent messages */}
-                  {message.agentMeta && (
-                    <div className="mb-2">
-                      <AgentStatusBadge message={message.agentMeta} />
+                  {/* Evidence Layer v1: Render evidence block */}
+                  {message.role === 'evidence' && message.evidenceResult ? (
+                    <div className="space-y-3">
+                      {/* Header */}
+                      <div className="border-b border-blue-200 dark:border-blue-800 pb-2">
+                        <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">Evidence (Live Data)</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Retrieved: {new Date(message.evidenceResult.retrieved_at).toLocaleString()}
+                          {message.evidenceResult.duration_ms && ` • ${message.evidenceResult.duration_ms}ms`}
+                        </p>
+                      </div>
+
+                      {/* Error state */}
+                      {!message.evidenceResult.ok && message.evidenceResult.error && (
+                        <div className="text-sm text-red-600 dark:text-red-400">
+                          Error: {message.evidenceResult.error}
+                        </div>
+                      )}
+
+                      {/* Facts */}
+                      {message.evidenceResult.ok && message.evidenceResult.facts.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Key Facts</p>
+                          <ul className="space-y-2 list-none">
+                            {message.evidenceResult.facts.map((fact, idx) => {
+                              const source = message.evidenceResult!.sources.find(s => s.id === fact.source_id);
+                              return (
+                                <li key={idx} className="text-sm flex gap-2">
+                                  <span className="text-blue-600 dark:text-blue-400">•</span>
+                                  <div className="flex-1">
+                                    <span className="text-foreground">{fact.text}</span>
+                                    {source && (
+                                      <a
+                                        href={source.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="ml-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                      >
+                                        [{source.domain}]
+                                      </a>
+                                    )}
+                                    {fact.published_at && (
+                                      <span className="ml-1 text-xs text-muted-foreground">
+                                        ({new Date(fact.published_at).toLocaleDateString()})
+                                      </span>
+                                    )}
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Sources */}
+                      {message.evidenceResult.ok && message.evidenceResult.sources.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sources</p>
+                          <ul className="space-y-1 list-none text-xs">
+                            {message.evidenceResult.sources.map((source, idx) => (
+                              <li key={idx}>
+                                <a
+                                  href={source.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                                >
+                                  {source.title}
+                                </a>
+                                <span className="text-muted-foreground ml-1">({source.domain})</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Limits note */}
+                      {message.evidenceResult.limits && (
+                        <p className="text-xs text-muted-foreground italic">
+                          Note: {message.evidenceResult.limits}
+                        </p>
+                      )}
                     </div>
-                  )}
-                  {/* Render message content with styled headers for multi-agent messages */}
-                  {message.agentMeta ? (
+                  ) : message.agentMeta ? (
                     // Multi-agent message: parse and style the agent header
                     (() => {
                       const lines = message.content.split('\n');
@@ -933,33 +1076,95 @@ export function ChatScreen() {
                         </>
                       );
                     })()
+                  ) : message.agentMeta ? (
+                    // Per-agent status badge for multi-agent messages
+                    <div className="mb-2">
+                      <AgentStatusBadge message={message.agentMeta} />
+                    </div>
                   ) : (
                     // Regular message
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <>
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-white/70' : 'text-muted-foreground'}`}>
+                        {message.timestamp.toLocaleTimeString()}
+                      </p>
+                    </>
                   )}
-                  <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-white/70' : 'text-muted-foreground'}`}>
-                    {message.timestamp.toLocaleTimeString()}
-                  </p>
                 </div>
+
+                {/* Evidence Layer v1: Post-evidence action buttons */}
+                {message.role === 'evidence' && message.evidenceResult?.ok && (
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={() => {
+                          setInput(`Based on the evidence above, `);
+                        }}
+                        disabled={loading}
+                        className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-[12px] hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      >
+                        <Brain className="w-3 h-3" />
+                        Ask Quillo to interpret this evidence
+                      </button>
+                      <button
+                        onClick={() => handleBringInAgentsForMessage(`Analyze this evidence: ${message.content}`)}
+                        disabled={loading}
+                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      >
+                        <Brain className="w-3 h-3" />
+                        Get second opinions on this evidence
+                      </button>
+                      <button
+                        onClick={() => {
+                          const query = message.content.replace('Evidence retrieved for: "', '').replace('"', '');
+                          setInput(`/evidence ${query}`);
+                        }}
+                        disabled={loading}
+                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Refine evidence query
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground pl-1">
+                      Optional — interpret evidence, get other perspectives, or refine your search
+                    </p>
+                  </div>
+                )}
 
                 {/* RAW MODE: Bring in other models button for user messages */}
                 {rawChatMode && message.role === 'user' && (
                   <div className="space-y-1.5">
-                    <button
-                      onClick={() => handleBringInAgentsForMessage(message.content)}
-                      disabled={loading}
-                      className="group relative px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                    >
-                      <Brain className="w-3 h-3" />
-                      Get second opinions
-                      {/* Tooltip */}
-                      <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
-                        Claude, Gemini, and DeepSeek will each reply once. Quillo will summarize.
-                        <div className="absolute top-full left-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
-                      </div>
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleBringInAgentsForMessage(message.content)}
+                        disabled={loading}
+                        className="group relative px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      >
+                        <Brain className="w-3 h-3" />
+                        Get second opinions
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                          Claude, Gemini, and DeepSeek will each reply once. Quillo will summarize.
+                          <div className="absolute top-full left-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleFetchEvidence(message.content)}
+                        disabled={loading}
+                        className="group relative px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-[12px] hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      >
+                        <Database className="w-3 h-3" />
+                        Fetch current facts
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                          Adds an Evidence block with sources + timestamps
+                          <div className="absolute top-full left-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
+                        </div>
+                      </button>
+                    </div>
                     <p className="text-[10px] text-muted-foreground pl-1">
-                      Optional — manually bring in other models for this question
+                      Optional — manually bring in other models or fetch live evidence for this question
                     </p>
                   </div>
                 )}
