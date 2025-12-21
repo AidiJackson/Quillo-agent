@@ -23,13 +23,15 @@ from ..schemas import (
     FeedbackIn, FeedbackOut,
     ExecuteRequest, ExecuteResponse,
     JudgmentRequest, JudgmentResponse,
-    MultiAgentRequest, MultiAgentResponse, MultiAgentMessage
+    MultiAgentRequest, MultiAgentResponse, MultiAgentMessage,
+    EvidenceRequest, EvidenceResponse
 )
 from ..services import quillo, advice, memory as memory_service
 from ..services.execution import execution_service
 from ..services.judgment import assess_stakes, build_explanation, format_for_user
 from ..services.interaction_contract import enforce_contract, ActionIntent
 from ..services.multi_agent_chat import run_multi_agent_chat
+from ..services.evidence import retrieve_evidence
 
 
 # Rate limiter instance
@@ -663,3 +665,66 @@ async def ui_multi_agent_chat(
         fallback_reason=fallback_reason,
         peers_unavailable=peers_unavailable
     )
+
+
+@router.post("/evidence", response_model=EvidenceResponse)
+@limiter.limit("30/minute")
+async def ui_evidence_retrieval(
+    request: Request,
+    payload: EvidenceRequest,
+    token: str = Depends(verify_ui_token)
+) -> EvidenceResponse:
+    """
+    Evidence Layer v1: Manual-only, sourced, non-authorial evidence retrieval.
+
+    Retrieves live web data and extracts neutral facts with sources and timestamps.
+
+    CRITICAL RULES (enforced):
+    - Manual trigger only (no automatic invocation)
+    - Non-authorial: facts only, no advice/recommendations
+    - Separation from judgment: no synthesis or interpretation
+    - Hard limits: max 10 facts, max 8 sources
+
+    Rate limited to 30 requests per minute per IP.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: EvidenceRequest with query or use_last_message flag
+        token: Validated UI token
+
+    Returns:
+        EvidenceResponse with facts, sources, timestamps, and optional limits note
+    """
+    logger.info(f"UI POST /evidence: query={payload.query[:50] if payload.query else 'None'}, use_last_message={payload.use_last_message}")
+
+    # Determine query
+    query = None
+    if payload.query and payload.query.strip():
+        query = payload.query.strip()
+    elif payload.use_last_message:
+        # TODO: In future, retrieve last user message from conversation storage
+        # For v1, return error since we don't have conversation storage yet
+        from datetime import datetime, timezone
+        return EvidenceResponse(
+            ok=False,
+            retrieved_at=datetime.now(timezone.utc).isoformat(),
+            duration_ms=0,
+            facts=[],
+            sources=[],
+            error="Conversation storage not yet implemented. Please provide a query."
+        )
+
+    # Validate query
+    if not query:
+        from datetime import datetime, timezone
+        return EvidenceResponse(
+            ok=False,
+            retrieved_at=datetime.now(timezone.utc).isoformat(),
+            duration_ms=0,
+            facts=[],
+            sources=[],
+            error="No query provided. Please specify a query or use_last_message."
+        )
+
+    # Retrieve evidence
+    return await retrieve_evidence(query)
