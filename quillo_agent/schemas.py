@@ -178,7 +178,7 @@ class EvidenceRequest(BaseModel):
 
 
 class EvidenceResponse(BaseModel):
-    """Response from evidence layer (v1)"""
+    """Response from evidence layer (v1.1 with guards)"""
     ok: bool = Field(..., description="Whether evidence retrieval succeeded")
     retrieved_at: str = Field(..., description="ISO timestamp of retrieval")
     duration_ms: int = Field(..., description="Total duration in milliseconds")
@@ -186,3 +186,4 @@ class EvidenceResponse(BaseModel):
     sources: List[EvidenceSource] = Field(default_factory=list, description="Source metadata (max 8)")
     limits: Optional[str] = Field(None, description="Optional single-line limitation or missing-data note")
     error: Optional[str] = Field(None, description="Error message if ok=False")
+    empty_reason: Optional[str] = Field(None, description="Reason why facts are empty: no_results, ambiguous_query, computed_stat, source_fetch_blocked, unknown")
