@@ -199,6 +199,7 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     messages = []
     prompt_mode = settings.multi_agent_prompt_mode
     peer_responses = {}
+    trace_id = str(uuid.uuid4())
 
     # Message 1: Primary frame (deterministic, always succeeds)
     primary_frame = _generate_short_frame(text)
@@ -215,7 +216,9 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     claude_content, claude_reason = await _call_openrouter_safe(
         model=CLAUDE_MODEL,
         system_prompt=_get_agent_prompt("claude", mode=prompt_mode),
-        user_message=text
+        user_message=text,
+        agent_name="claude",
+        trace_id=trace_id
     )
     if claude_content:
         peer_responses["claude"] = claude_content
@@ -241,7 +244,9 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     deepseek_content, deepseek_reason = await _call_openrouter_safe(
         model=CHALLENGER_MODEL,
         system_prompt=_get_agent_prompt("deepseek", mode=prompt_mode),
-        user_message=text
+        user_message=text,
+        agent_name="deepseek",
+        trace_id=trace_id
     )
     if deepseek_content:
         peer_responses["deepseek"] = deepseek_content
@@ -267,7 +272,9 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     gemini_content, gemini_reason = await _call_openrouter_safe(
         model=GEMINI_MODEL,
         system_prompt=_get_agent_prompt("gemini", mode=prompt_mode),
-        user_message=text
+        user_message=text,
+        agent_name="gemini",
+        trace_id=trace_id
     )
     if gemini_content:
         peer_responses["gemini"] = gemini_content
@@ -294,7 +301,9 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     synth_content, synth_reason = await _call_openrouter_safe(
         model=PRIMARY_MODEL,
         system_prompt=_get_agent_prompt("primary_synth", mode=prompt_mode),
-        user_message=synth_prompt
+        user_message=synth_prompt,
+        agent_name="quillo",
+        trace_id=trace_id
     )
 
     if synth_content:
@@ -337,7 +346,9 @@ async def _call_openrouter_safe(
     model: str,
     system_prompt: str,
     user_message: str,
-    max_tokens: int = 1500
+    max_tokens: int = 1500,
+    agent_name: str = "unknown",
+    trace_id: Optional[str] = None
 ) -> tuple[Optional[str], Optional[str]]:
     """
     Safely call OpenRouter, returning (content, error_reason).
@@ -355,16 +366,20 @@ async def _call_openrouter_safe(
             logger.debug(f"OpenRouter response from {model.split('/')[-1]}: {len(content)} chars")
         return (content, None)
     except httpx.TimeoutException:
+        logger.error(f"event=multiagent_call_failed agent={agent_name} model={model} error_type=timeout trace_id={trace_id}")
         return (None, "timeout")
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 429:
+            logger.error(f"event=multiagent_call_failed agent={agent_name} model={model} status_code={e.response.status_code} error_type=rate_limited trace_id={trace_id}")
             return (None, "rate_limited")
         elif e.response.status_code == 404:
+            logger.error(f"event=multiagent_call_failed agent={agent_name} model={model} status_code={e.response.status_code} error_type=not_found trace_id={trace_id}")
             return (None, "not_found")
         else:
+            logger.error(f"event=multiagent_call_failed agent={agent_name} model={model} status_code={e.response.status_code} error_type=http_error trace_id={trace_id}")
             return (None, "http_error")
     except Exception as e:
-        logger.warning(f"OpenRouter call failed: {e.__class__.__name__}")
+        logger.error(f"event=multiagent_call_failed agent={agent_name} model={model} error_type=exception exception_class={e.__class__.__name__} trace_id={trace_id}")
         return (None, "exception")
 
 
