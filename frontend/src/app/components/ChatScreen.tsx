@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle, Database, RefreshCw } from 'lucide-react';
-import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, fetchEvidence, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, MultiAgentMessage, AskResponse, ConfigResponse, EvidenceResponse } from '@/lib/quilloApi';
+import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, fetchEvidence, createTaskIntent, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, MultiAgentMessage, AskResponse, ConfigResponse, EvidenceResponse, TaskIntentOut } from '@/lib/quilloApi';
 import {
   Dialog,
   DialogContent,
@@ -407,6 +407,10 @@ export function ChatScreen() {
   const [showAdvancedTools, setShowAdvancedTools] = useState(false);
   const [rawChatMode, setRawChatMode] = useState<boolean>(true); // Default to raw mode
 
+  // Task Intent Confirmation v1 state
+  const [taskConfirmMessageId, setTaskConfirmMessageId] = useState<string | null>(null);
+  const [taskCreating, setTaskCreating] = useState(false);
+
   // Check backend health, auth status, and config on mount
   useEffect(() => {
     const checkHealth = async () => {
@@ -737,6 +741,55 @@ export function ChatScreen() {
           : msg
       )
     );
+  };
+
+  // Task Intent Confirmation v1 handlers
+  const handleTurnIntoTask = (messageId: string) => {
+    setTaskConfirmMessageId(messageId);
+  };
+
+  const handleConfirmTask = async (messageId: string) => {
+    const message = messages.find(msg => msg.id === messageId);
+    if (!message || message.role !== 'user') return;
+
+    setTaskCreating(true);
+
+    try {
+      // Create task intent with minimal cleanup
+      const intentText = message.content.trim();
+      await createTaskIntent({
+        intent_text: intentText,
+        origin_chat_id: null, // v1: no chat ID tracking yet
+        user_key: null, // v1: no user tracking yet
+      });
+
+      // Close confirmation card
+      setTaskConfirmMessageId(null);
+
+      // Add success note to chat
+      const successNote: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Task created. You can view it in Tasks.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, successNote]);
+    } catch (error) {
+      console.error('Task creation failed:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Failed to create task: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setTaskCreating(false);
+    }
+  };
+
+  const handleCancelTask = () => {
+    setTaskConfirmMessageId(null);
   };
 
   const handleMultiAgent = async () => {
@@ -1223,7 +1276,7 @@ export function ChatScreen() {
                 {/* RAW MODE: Bring in other models button for user messages */}
                 {rawChatMode && message.role === 'user' && (
                   <div className="space-y-1.5">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={() => handleBringInAgentsForMessage(message.content)}
                         disabled={loading}
@@ -1250,10 +1303,69 @@ export function ChatScreen() {
                           <div className="absolute top-full left-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
                         </div>
                       </button>
+                      <button
+                        onClick={() => handleTurnIntoTask(message.id)}
+                        disabled={loading}
+                        className="group relative px-3 py-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-[12px] hover:bg-green-200 dark:hover:bg-green-900/50 transition-all text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      >
+                        <CheckCircle className="w-3 h-3" />
+                        Turn into task
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                          Uorin will paraphrase the intent and ask you to confirm.
+                          <div className="absolute top-full left-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
+                        </div>
+                      </button>
                     </div>
                     <p className="text-[10px] text-muted-foreground pl-1">
-                      Optional — manually bring in other models or fetch live evidence for this question
+                      Optional — manually bring in other models, fetch live evidence, or create a task for this message
                     </p>
+                  </div>
+                )}
+
+                {/* Task Intent Confirmation Card (v1) */}
+                {taskConfirmMessageId === message.id && (
+                  <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-2 border-green-200 dark:border-green-800 rounded-[16px] px-4 py-3 space-y-3 shadow-lg">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-foreground mb-1">Create task?</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Just to confirm: you want me to{' '}
+                          <span className="font-medium text-foreground">
+                            {message.content.length > 140
+                              ? message.content.substring(0, 140) + '…'
+                              : message.content}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleConfirmTask(message.id)}
+                        disabled={taskCreating}
+                        className="px-4 py-2 bg-green-600 text-white rounded-[12px] hover:bg-green-700 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      >
+                        {taskCreating ? (
+                          <>
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-3 h-3" />
+                            Confirm
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={handleCancelTask}
+                        disabled={taskCreating}
+                        className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-[12px] hover:bg-slate-300 dark:hover:bg-slate-600 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      >
+                        <XCircle className="w-3 h-3" />
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
 

@@ -473,3 +473,93 @@ export async function fetchEvidence(
 
   return response.json();
 }
+
+/**
+ * Tasks Module v1 - Task Intent types and API
+ */
+
+export interface TaskIntentOut {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  status: 'approved' | 'completed' | 'cancelled';
+  intent_text: string;
+  origin_chat_id?: string | null;
+  user_key?: string | null;
+}
+
+/**
+ * Fetch task intents (read-only, v1)
+ * Lists task intents ordered by most recent first
+ * If userKey provided, filter by user. Otherwise, return recent intents globally.
+ */
+export async function fetchTaskIntents(
+  userKey?: string,
+  limit: number = 20
+): Promise<TaskIntentOut[]> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  // Build query params
+  const params = new URLSearchParams();
+  if (userKey) {
+    params.append('user_key', userKey);
+  }
+  params.append('limit', limit.toString());
+
+  const url = `${API_BASE}/tasks/intents?${params.toString()}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Task intents fetch failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+export interface TaskIntentCreate {
+  intent_text: string;
+  origin_chat_id?: string | null;
+  user_key?: string | null;
+}
+
+/**
+ * Create a new task intent (v1)
+ * Creates a task intent with status=approved by default
+ */
+export async function createTaskIntent(
+  payload: TaskIntentCreate
+): Promise<TaskIntentOut> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/tasks/intents`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Task intent creation failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
