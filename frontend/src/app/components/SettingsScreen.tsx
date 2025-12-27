@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
-import { Zap, BarChart3, Sparkles, DollarSign } from 'lucide-react';
+import { Zap, BarChart3, Sparkles, DollarSign, CheckCircle } from 'lucide-react';
+import { fetchUserPrefs, updateUserPrefs, UserPrefsOut } from '../../lib/quilloApi';
 
 export function SettingsScreen() {
   const [mode, setMode] = useState<'Fast' | 'Balanced' | 'Premium'>('Balanced');
@@ -10,6 +11,39 @@ export function SettingsScreen() {
     research: 'Auto',
     coding: 'Auto',
   });
+  const [approvalMode, setApprovalMode] = useState<'confirm_every_step' | 'plan_then_auto' | 'auto_lowrisk_confirm_highrisk'>('plan_then_auto');
+  const [loadingPrefs, setLoadingPrefs] = useState(true);
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [savedIndicator, setSavedIndicator] = useState(false);
+
+  // Load user preferences on mount
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const prefs = await fetchUserPrefs('global');
+        setApprovalMode(prefs.approval_mode);
+      } catch (error) {
+        console.error('Failed to load user preferences:', error);
+      } finally {
+        setLoadingPrefs(false);
+      }
+    };
+    loadPrefs();
+  }, []);
+
+  const handleApprovalModeChange = async (newMode: 'confirm_every_step' | 'plan_then_auto' | 'auto_lowrisk_confirm_highrisk') => {
+    setApprovalMode(newMode);
+    setSavingPrefs(true);
+    try {
+      await updateUserPrefs({ approval_mode: newMode }, 'global');
+      setSavedIndicator(true);
+      setTimeout(() => setSavedIndicator(false), 2000);
+    } catch (error) {
+      console.error('Failed to save user preferences:', error);
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
 
   const modes = [
     {
@@ -112,6 +146,84 @@ export function SettingsScreen() {
               </p>
             </div>
           </div>
+        </GlassCard>
+
+        {/* Task Approval */}
+        <GlassCard className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-semibold text-lg">Task approval</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Controls how tasks progress once you approve them
+              </p>
+            </div>
+            {savedIndicator && (
+              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                <CheckCircle className="w-4 h-4" />
+                Saved
+              </div>
+            )}
+          </div>
+
+          {loadingPrefs ? (
+            <div className="text-sm text-muted-foreground">Loading preferences...</div>
+          ) : (
+            <div className="space-y-3">
+              <label className="flex items-start gap-3 p-4 bg-accent/50 rounded-[16px] cursor-pointer hover:bg-accent transition-colors">
+                <input
+                  type="radio"
+                  name="approvalMode"
+                  value="confirm_every_step"
+                  checked={approvalMode === 'confirm_every_step'}
+                  onChange={() => handleApprovalModeChange('confirm_every_step')}
+                  disabled={savingPrefs}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <p className="font-medium">Confirm every step</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You'll be asked to approve each individual step before it runs
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-4 bg-accent/50 rounded-[16px] cursor-pointer hover:bg-accent transition-colors border-2 border-blue-500/50">
+                <input
+                  type="radio"
+                  name="approvalMode"
+                  value="plan_then_auto"
+                  checked={approvalMode === 'plan_then_auto'}
+                  onChange={() => handleApprovalModeChange('plan_then_auto')}
+                  disabled={savingPrefs}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <p className="font-medium">Approve the plan, then auto-complete steps <span className="text-xs text-blue-600 dark:text-blue-400">(recommended)</span></p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Review the full plan first, then Uorin completes all steps automatically
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-4 bg-accent/50 rounded-[16px] cursor-pointer hover:bg-accent transition-colors opacity-50">
+                <input
+                  type="radio"
+                  name="approvalMode"
+                  value="auto_lowrisk_confirm_highrisk"
+                  checked={approvalMode === 'auto_lowrisk_confirm_highrisk'}
+                  onChange={() => handleApprovalModeChange('auto_lowrisk_confirm_highrisk')}
+                  disabled={true}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <p className="font-medium">Auto-complete low-risk, confirm high-risk <span className="text-xs text-muted-foreground">(coming soon)</span></p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Uorin runs safe steps automatically, pauses for approval on sensitive actions
+                  </p>
+                </div>
+              </label>
+            </div>
+          )}
         </GlassCard>
 
         {/* Task-Specific Models */}

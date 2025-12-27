@@ -215,3 +215,18 @@ class TaskIntentOut(BaseModel):
     scope_will_do: Optional[List[str]] = Field(None, description="What the task will do")
     scope_wont_do: Optional[List[str]] = Field(None, description="What the task won't do")
     scope_done_when: Optional[str] = Field(None, description="When the task is considered done")
+
+
+# User Preferences Module v1 Schemas
+
+class UserPrefsUpdate(BaseModel):
+    """Request to update user preferences"""
+    approval_mode: str = Field(..., description="Task approval mode: confirm_every_step, plan_then_auto, or auto_lowrisk_confirm_highrisk")
+
+
+class UserPrefsOut(BaseModel):
+    """User preferences output schema"""
+    user_key: str = Field(..., description="User identifier")
+    approval_mode: str = Field(..., description="Task approval mode")
+    created_at: str = Field(..., description="ISO timestamp of creation")
+    updated_at: str = Field(..., description="ISO timestamp of last update")

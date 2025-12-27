@@ -571,3 +571,82 @@ export async function createTaskIntent(
 
   return response.json();
 }
+
+/**
+ * User Preferences Module v1 - types and API
+ */
+
+export interface UserPrefsOut {
+  user_key: string;
+  approval_mode: 'confirm_every_step' | 'plan_then_auto' | 'auto_lowrisk_confirm_highrisk';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserPrefsUpdate {
+  approval_mode: 'confirm_every_step' | 'plan_then_auto' | 'auto_lowrisk_confirm_highrisk';
+}
+
+/**
+ * Get user preferences (v1)
+ * Returns user preferences including task approval mode
+ */
+export async function fetchUserPrefs(
+  userKey: string = 'global'
+): Promise<UserPrefsOut> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const url = `${API_BASE}/prefs?user_key=${encodeURIComponent(userKey)}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`User prefs fetch failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Update user preferences (v1)
+ * Updates user's task approval mode preference
+ */
+export async function updateUserPrefs(
+  payload: UserPrefsUpdate,
+  userKey: string = 'global'
+): Promise<UserPrefsOut> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const url = `${API_BASE}/prefs?user_key=${encodeURIComponent(userKey)}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`User prefs update failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
