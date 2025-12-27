@@ -25,7 +25,8 @@ from ..schemas import (
     JudgmentRequest, JudgmentResponse,
     MultiAgentRequest, MultiAgentResponse, MultiAgentMessage,
     EvidenceRequest, EvidenceResponse,
-    TaskIntentCreate, TaskIntentOut
+    TaskIntentCreate, TaskIntentOut,
+    UserPrefsUpdate, UserPrefsOut
 )
 from ..services import quillo, advice, memory as memory_service
 from ..services.execution import execution_service
@@ -34,6 +35,7 @@ from ..services.interaction_contract import enforce_contract, ActionIntent
 from ..services.multi_agent_chat import run_multi_agent_chat
 from ..services.evidence import retrieve_evidence
 from ..services.tasks.service import TaskIntentService
+from ..services.user_prefs.service import UserPrefsService
 
 
 # Rate limiter instance
@@ -840,3 +842,79 @@ async def ui_list_task_intents(
         )
         for task_intent in task_intents
     ]
+
+
+@router.get("/prefs", response_model=UserPrefsOut)
+async def ui_get_user_prefs(
+    user_key: str = Query("global", description="User identifier (default: global)"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> UserPrefsOut:
+    """
+    Get user preferences (v1).
+
+    Returns user preferences including task approval mode.
+    Creates default preferences if none exist for the user.
+
+    Args:
+        user_key: User identifier (defaults to "global")
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        UserPrefsOut with user preferences
+    """
+    logger.info(f"UI GET /prefs: user_key={user_key}")
+
+    # Get or create user preferences
+    prefs = UserPrefsService.get_prefs(db, user_key)
+
+    return UserPrefsOut(
+        user_key=prefs.user_key,
+        approval_mode=prefs.approval_mode,
+        created_at=prefs.created_at.isoformat(),
+        updated_at=prefs.updated_at.isoformat()
+    )
+
+
+@router.post("/prefs", response_model=UserPrefsOut)
+async def ui_update_user_prefs(
+    payload: UserPrefsUpdate,
+    user_key: str = Query("global", description="User identifier (default: global)"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> UserPrefsOut:
+    """
+    Update user preferences (v1).
+
+    Updates user's task approval mode preference.
+    Creates preferences if none exist for the user.
+
+    Args:
+        payload: UserPrefsUpdate with approval_mode
+        user_key: User identifier (defaults to "global")
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        UserPrefsOut with updated preferences
+    """
+    logger.info(f"UI POST /prefs: user_key={user_key}, approval_mode={payload.approval_mode}")
+
+    # Update user preferences
+    try:
+        prefs = UserPrefsService.update_approval_mode(
+            db=db,
+            user_key=user_key,
+            approval_mode=payload.approval_mode
+        )
+    except ValueError as e:
+        logger.warning(f"Invalid approval mode: {str(e)}")
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return UserPrefsOut(
+        user_key=prefs.user_key,
+        approval_mode=prefs.approval_mode,
+        created_at=prefs.created_at.isoformat(),
+        updated_at=prefs.updated_at.isoformat()
+    )
