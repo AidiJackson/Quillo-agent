@@ -3,7 +3,7 @@ Task Intent model (v1)
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Text, DateTime, Enum
+from sqlalchemy import Column, String, Text, DateTime, Enum, JSON
 from sqlalchemy.ext.declarative import declarative_base
 import enum
 
@@ -38,3 +38,8 @@ class TaskIntent(Base):
     intent_text = Column(Text, nullable=False)
     origin_chat_id = Column(String, nullable=True)
     user_key = Column(String, nullable=True)
+
+    # Task Scope v1
+    scope_will_do = Column(JSON, nullable=True)  # list[str]
+    scope_wont_do = Column(JSON, nullable=True)  # list[str]
+    scope_done_when = Column(Text, nullable=True)  # str

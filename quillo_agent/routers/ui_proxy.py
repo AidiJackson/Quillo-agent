@@ -770,7 +770,10 @@ async def ui_create_task_intent(
             db=db,
             intent_text=payload.intent_text,
             origin_chat_id=payload.origin_chat_id,
-            user_key=payload.user_key
+            user_key=payload.user_key,
+            scope_will_do=payload.scope_will_do,
+            scope_wont_do=payload.scope_wont_do,
+            scope_done_when=payload.scope_done_when
         )
     except ValueError as e:
         logger.warning(f"Invalid task intent creation: {str(e)}")
@@ -783,7 +786,10 @@ async def ui_create_task_intent(
         status=task_intent.status.value,
         intent_text=task_intent.intent_text,
         origin_chat_id=task_intent.origin_chat_id,
-        user_key=task_intent.user_key
+        user_key=task_intent.user_key,
+        scope_will_do=task_intent.scope_will_do,
+        scope_wont_do=task_intent.scope_wont_do,
+        scope_done_when=task_intent.scope_done_when
     )
 
 
@@ -827,7 +833,10 @@ async def ui_list_task_intents(
             status=task_intent.status.value,
             intent_text=task_intent.intent_text,
             origin_chat_id=task_intent.origin_chat_id,
-            user_key=task_intent.user_key
+            user_key=task_intent.user_key,
+            scope_will_do=task_intent.scope_will_do,
+            scope_wont_do=task_intent.scope_wont_do,
+            scope_done_when=task_intent.scope_done_when
         )
         for task_intent in task_intents
     ]

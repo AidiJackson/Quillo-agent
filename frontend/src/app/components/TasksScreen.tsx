@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchTaskIntents, TaskIntentOut } from '../../lib/quilloApi';
-import { CheckCircle2, Circle, XCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { CheckCircle2, Circle, XCircle, RefreshCw, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 
 /**
  * TasksScreen - Read-only view of Task Intents (v1)
@@ -13,6 +13,7 @@ export function TasksScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedScopes, setExpandedScopes] = useState<Set<string>>(new Set());
 
   const loadTasks = async (showRefreshing = false) => {
     try {
@@ -84,6 +85,22 @@ export function TasksScreen() {
       default:
         return null;
     }
+  };
+
+  const toggleScope = (taskId: string) => {
+    setExpandedScopes(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  const hasScope = (task: TaskIntentOut): boolean => {
+    return !!(task.scope_will_do?.length || task.scope_wont_do?.length || task.scope_done_when);
   };
 
   if (loading) {
@@ -181,6 +198,56 @@ export function TasksScreen() {
                     {getStatusBadge(task.status)}
                   </div>
                 </div>
+
+                {/* Task Scope v1 - Collapsible */}
+                {hasScope(task) && (
+                  <div className="mt-3 pt-3 border-t border-border/50">
+                    <button
+                      onClick={() => toggleScope(task.id)}
+                      className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full"
+                    >
+                      {expandedScopes.has(task.id) ? (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      )}
+                      <span>Task Scope</span>
+                    </button>
+
+                    {expandedScopes.has(task.id) && (
+                      <div className="mt-3 space-y-3 text-xs">
+                        {task.scope_will_do && task.scope_will_do.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-foreground mb-1.5">Will do:</h4>
+                            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                              {task.scope_will_do.map((item, idx) => (
+                                <li key={idx} className="leading-relaxed">{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {task.scope_wont_do && task.scope_wont_do.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-foreground mb-1.5">Won't do:</h4>
+                            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                              {task.scope_wont_do.map((item, idx) => (
+                                <li key={idx} className="leading-relaxed">{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {task.scope_done_when && (
+                          <div>
+                            <h4 className="font-semibold text-foreground mb-1.5">Done when:</h4>
+                            <p className="text-muted-foreground leading-relaxed">{task.scope_done_when}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

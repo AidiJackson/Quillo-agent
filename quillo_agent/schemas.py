@@ -196,6 +196,10 @@ class TaskIntentCreate(BaseModel):
     intent_text: str = Field(..., description="The task intent text (required)")
     origin_chat_id: Optional[str] = Field(None, description="Optional chat/conversation ID where this originated")
     user_key: Optional[str] = Field(None, description="Optional user identifier (session-based or client-provided)")
+    # Task Scope v1 - optional in create, backend will auto-generate if missing
+    scope_will_do: Optional[List[str]] = Field(None, description="What the task will do (max 5 bullets)")
+    scope_wont_do: Optional[List[str]] = Field(None, description="What the task won't do (max 5 bullets)")
+    scope_done_when: Optional[str] = Field(None, description="When the task is considered done")
 
 
 class TaskIntentOut(BaseModel):
@@ -207,3 +211,7 @@ class TaskIntentOut(BaseModel):
     intent_text: str = Field(..., description="The task intent text")
     origin_chat_id: Optional[str] = Field(None, description="Optional chat/conversation ID where this originated")
     user_key: Optional[str] = Field(None, description="Optional user identifier")
+    # Task Scope v1
+    scope_will_do: Optional[List[str]] = Field(None, description="What the task will do")
+    scope_wont_do: Optional[List[str]] = Field(None, description="What the task won't do")
+    scope_done_when: Optional[str] = Field(None, description="When the task is considered done")

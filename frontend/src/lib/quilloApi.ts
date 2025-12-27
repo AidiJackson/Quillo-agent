@@ -486,6 +486,10 @@ export interface TaskIntentOut {
   intent_text: string;
   origin_chat_id?: string | null;
   user_key?: string | null;
+  // Task Scope v1
+  scope_will_do?: string[] | null;
+  scope_wont_do?: string[] | null;
+  scope_done_when?: string | null;
 }
 
 /**
@@ -532,6 +536,10 @@ export interface TaskIntentCreate {
   intent_text: string;
   origin_chat_id?: string | null;
   user_key?: string | null;
+  // Task Scope v1 - optional, backend will auto-generate if missing
+  scope_will_do?: string[] | null;
+  scope_wont_do?: string[] | null;
+  scope_done_when?: string | null;
 }
 
 /**

@@ -16,7 +16,10 @@ class TaskIntentRepository:
         db: Session,
         intent_text: str,
         origin_chat_id: Optional[str] = None,
-        user_key: Optional[str] = None
+        user_key: Optional[str] = None,
+        scope_will_do: Optional[List[str]] = None,
+        scope_wont_do: Optional[List[str]] = None,
+        scope_done_when: Optional[str] = None
     ) -> TaskIntent:
         """
         Create a new task intent.
@@ -26,6 +29,9 @@ class TaskIntentRepository:
             intent_text: The task intent text (required)
             origin_chat_id: Optional chat/conversation ID where this originated
             user_key: Optional user identifier (session-based or client-provided)
+            scope_will_do: What the task will do (max 5 bullets)
+            scope_wont_do: What the task won't do (max 5 bullets)
+            scope_done_when: When the task is considered done
 
         Returns:
             Created TaskIntent instance
@@ -34,7 +40,10 @@ class TaskIntentRepository:
             intent_text=intent_text,
             origin_chat_id=origin_chat_id,
             user_key=user_key,
-            status=TaskIntentStatus.APPROVED  # v1: all start as approved
+            status=TaskIntentStatus.APPROVED,  # v1: all start as approved
+            scope_will_do=scope_will_do,
+            scope_wont_do=scope_wont_do,
+            scope_done_when=scope_done_when
         )
         db.add(task_intent)
         db.commit()

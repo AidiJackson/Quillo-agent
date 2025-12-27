@@ -770,7 +770,7 @@ export function ChatScreen() {
       const successNote: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Task created. You can view it in Tasks.',
+        content: 'Task created with scope. You can view it in Tasks.',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, successNote]);

@@ -210,3 +210,196 @@ def test_task_intent_status_defaults_to_approved():
 
         # Verify status is approved
         assert data["status"] == "approved"
+
+
+# Task Scope v1 Tests
+
+def test_scope_auto_generated_when_not_provided():
+    """Test that scope fields are auto-generated when not provided"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Review quarterly financials"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify scope fields exist
+        assert "scope_will_do" in data
+        assert "scope_wont_do" in data
+        assert "scope_done_when" in data
+
+        # Verify they are not empty
+        assert data["scope_will_do"] is not None
+        assert data["scope_wont_do"] is not None
+        assert data["scope_done_when"] is not None
+        assert len(data["scope_will_do"]) > 0
+        assert len(data["scope_wont_do"]) > 0
+        assert len(data["scope_done_when"]) > 0
+
+
+def test_scope_wont_do_contains_safety_bullets():
+    """Test that scope_wont_do contains safety guardrails"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Analyze market trends"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        wont_do = data["scope_wont_do"]
+        assert isinstance(wont_do, list)
+
+        # Check for expected safety bullets
+        wont_do_text = " ".join(wont_do).lower()
+        assert "won't send messages" in wont_do_text or "won't contact" in wont_do_text
+        assert "won't log into accounts" in wont_do_text or "won't make purchases" in wont_do_text
+
+
+def test_scope_keyword_shaping_email():
+    """Test that email-related keywords add specific scope bullets"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Draft email reply to client inquiry"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        will_do = data["scope_will_do"]
+        assert isinstance(will_do, list)
+
+        # Should contain message-related bullet
+        will_do_text = " ".join(will_do).lower()
+        assert "message" in will_do_text or "reply" in will_do_text or "draft" in will_do_text
+
+
+def test_scope_keyword_shaping_summarize():
+    """Test that summarize keywords add specific scope bullets"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Summarize email thread from team"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        will_do = data["scope_will_do"]
+        assert isinstance(will_do, list)
+
+        # Should contain summarize-related bullet
+        will_do_text = " ".join(will_do).lower()
+        assert "summarize" in will_do_text or "extract" in will_do_text or "action items" in will_do_text
+
+
+def test_scope_keyword_shaping_negotiate():
+    """Test that negotiate/argue keywords add specific scope bullets"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Prepare negotiation case for contract renewal"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        will_do = data["scope_will_do"]
+        assert isinstance(will_do, list)
+
+        # Should contain case/negotiation-related bullet
+        will_do_text = " ".join(will_do).lower()
+        assert "case" in will_do_text or "structured" in will_do_text or "options" in will_do_text
+
+
+def test_scope_max_five_bullets_enforced():
+    """Test that scope lists enforce max 5 bullets"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                # Intent with multiple keywords that could trigger many bullets
+                "intent_text": "Draft email reply to summarize negotiation case for contract renewal"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify max 5 bullets for will_do and wont_do
+        assert len(data["scope_will_do"]) <= 5
+        assert len(data["scope_wont_do"]) <= 5
+
+
+def test_scope_custom_values_accepted():
+    """Test that custom scope values can be provided instead of auto-generation"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        custom_will_do = ["Custom action 1", "Custom action 2"]
+        custom_wont_do = ["Custom constraint 1"]
+        custom_done_when = "Custom completion criteria"
+
+        response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Custom scope test",
+                "scope_will_do": custom_will_do,
+                "scope_wont_do": custom_wont_do,
+                "scope_done_when": custom_done_when
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify custom values were used
+        assert data["scope_will_do"] == custom_will_do
+        assert data["scope_wont_do"] == custom_wont_do
+        assert data["scope_done_when"] == custom_done_when
+
+
+def test_scope_returned_in_list_endpoint():
+    """Test that scope fields are returned in list endpoint"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create a task intent
+        create_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Test scope in list",
+                "user_key": "scope-list-test-user"
+            }
+        )
+        assert create_response.status_code == 200
+        created_id = create_response.json()["id"]
+
+        # List task intents
+        list_response = client.get(
+            "/ui/api/tasks/intents?user_key=scope-list-test-user",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert list_response.status_code == 200
+        data = list_response.json()
+
+        # Find our created intent
+        matching_item = next(item for item in data if item["id"] == created_id)
+
+        # Verify scope fields are present
+        assert "scope_will_do" in matching_item
+        assert "scope_wont_do" in matching_item
+        assert "scope_done_when" in matching_item
+        assert matching_item["scope_will_do"] is not None
+        assert len(matching_item["scope_will_do"]) > 0
