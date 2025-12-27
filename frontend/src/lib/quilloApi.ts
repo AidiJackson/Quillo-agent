@@ -527,3 +527,39 @@ export async function fetchTaskIntents(
 
   return response.json();
 }
+
+export interface TaskIntentCreate {
+  intent_text: string;
+  origin_chat_id?: string | null;
+  user_key?: string | null;
+}
+
+/**
+ * Create a new task intent (v1)
+ * Creates a task intent with status=approved by default
+ */
+export async function createTaskIntent(
+  payload: TaskIntentCreate
+): Promise<TaskIntentOut> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/tasks/intents`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Task intent creation failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
