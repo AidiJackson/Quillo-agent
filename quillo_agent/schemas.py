@@ -187,3 +187,23 @@ class EvidenceResponse(BaseModel):
     limits: Optional[str] = Field(None, description="Optional single-line limitation or missing-data note")
     error: Optional[str] = Field(None, description="Error message if ok=False")
     empty_reason: Optional[str] = Field(None, description="Reason why facts are empty: no_results, ambiguous_query, computed_stat, source_fetch_blocked, unknown")
+
+
+# Tasks Module v1 Schemas
+
+class TaskIntentCreate(BaseModel):
+    """Request to create a task intent"""
+    intent_text: str = Field(..., description="The task intent text (required)")
+    origin_chat_id: Optional[str] = Field(None, description="Optional chat/conversation ID where this originated")
+    user_key: Optional[str] = Field(None, description="Optional user identifier (session-based or client-provided)")
+
+
+class TaskIntentOut(BaseModel):
+    """Task intent output schema"""
+    id: str = Field(..., description="Task intent UUID")
+    created_at: str = Field(..., description="ISO timestamp of creation")
+    updated_at: str = Field(..., description="ISO timestamp of last update")
+    status: str = Field(..., description="Task status: approved, completed, or cancelled")
+    intent_text: str = Field(..., description="The task intent text")
+    origin_chat_id: Optional[str] = Field(None, description="Optional chat/conversation ID where this originated")
+    user_key: Optional[str] = Field(None, description="Optional user identifier")
