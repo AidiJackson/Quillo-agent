@@ -2,7 +2,7 @@
 UI Proxy (BFF) router - Frontend-facing endpoints without API key exposure
 """
 import hmac
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -24,7 +24,8 @@ from ..schemas import (
     ExecuteRequest, ExecuteResponse,
     JudgmentRequest, JudgmentResponse,
     MultiAgentRequest, MultiAgentResponse, MultiAgentMessage,
-    EvidenceRequest, EvidenceResponse
+    EvidenceRequest, EvidenceResponse,
+    TaskIntentCreate, TaskIntentOut
 )
 from ..services import quillo, advice, memory as memory_service
 from ..services.execution import execution_service
@@ -32,6 +33,7 @@ from ..services.judgment import assess_stakes, build_explanation, format_for_use
 from ..services.interaction_contract import enforce_contract, ActionIntent
 from ..services.multi_agent_chat import run_multi_agent_chat
 from ..services.evidence import retrieve_evidence
+from ..services.tasks.service import TaskIntentService
 
 
 # Rate limiter instance
@@ -728,3 +730,113 @@ async def ui_evidence_retrieval(
 
     # Retrieve evidence
     return await retrieve_evidence(query)
+
+
+# Tasks Module v1 Endpoints
+
+@router.post("/tasks/intents", response_model=TaskIntentOut)
+@limiter.limit("30/minute")
+async def ui_create_task_intent(
+    request: Request,
+    payload: TaskIntentCreate,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> TaskIntentOut:
+    """
+    Create a new task intent (v1).
+
+    Stores a user task intent for future orchestration.
+    V1 is minimal: just intent storage, no execution/workers.
+    Rate limited to 30 requests per minute per IP.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: TaskIntentCreate with intent_text, optional origin_chat_id, user_key
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        TaskIntentOut with id, timestamps, status, intent_text, etc.
+    """
+    logger.info(
+        f"UI POST /tasks/intents: user_key={payload.user_key}, "
+        f"origin_chat_id={payload.origin_chat_id}, "
+        f"text_len={len(payload.intent_text)}"
+    )
+
+    # Create task intent
+    try:
+        task_intent = TaskIntentService.create_intent(
+            db=db,
+            intent_text=payload.intent_text,
+            origin_chat_id=payload.origin_chat_id,
+            user_key=payload.user_key,
+            scope_will_do=payload.scope_will_do,
+            scope_wont_do=payload.scope_wont_do,
+            scope_done_when=payload.scope_done_when
+        )
+    except ValueError as e:
+        logger.warning(f"Invalid task intent creation: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return TaskIntentOut(
+        id=task_intent.id,
+        created_at=task_intent.created_at.isoformat(),
+        updated_at=task_intent.updated_at.isoformat(),
+        status=task_intent.status.value,
+        intent_text=task_intent.intent_text,
+        origin_chat_id=task_intent.origin_chat_id,
+        user_key=task_intent.user_key,
+        scope_will_do=task_intent.scope_will_do,
+        scope_wont_do=task_intent.scope_wont_do,
+        scope_done_when=task_intent.scope_done_when
+    )
+
+
+@router.get("/tasks/intents", response_model=List[TaskIntentOut])
+async def ui_list_task_intents(
+    user_key: Optional[str] = Query(None, description="Optional user identifier to filter by"),
+    limit: int = Query(20, ge=1, le=100, description="Max results (1-100, default 20)"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> List[TaskIntentOut]:
+    """
+    List task intents (v1).
+
+    Returns task intents ordered by most recent first.
+    If user_key provided, filter by user.
+    Otherwise, return recent intents globally (for dev convenience).
+
+    Args:
+        user_key: Optional user identifier to filter by
+        limit: Max results (1-100, default 20)
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        List of TaskIntentOut instances
+    """
+    logger.info(f"UI GET /tasks/intents: user_key={user_key}, limit={limit}")
+
+    # List task intents
+    task_intents = TaskIntentService.list_intents(
+        db=db,
+        user_key=user_key,
+        limit=limit
+    )
+
+    return [
+        TaskIntentOut(
+            id=task_intent.id,
+            created_at=task_intent.created_at.isoformat(),
+            updated_at=task_intent.updated_at.isoformat(),
+            status=task_intent.status.value,
+            intent_text=task_intent.intent_text,
+            origin_chat_id=task_intent.origin_chat_id,
+            user_key=task_intent.user_key,
+            scope_will_do=task_intent.scope_will_do,
+            scope_wont_do=task_intent.scope_wont_do,
+            scope_done_when=task_intent.scope_done_when
+        )
+        for task_intent in task_intents
+    ]
