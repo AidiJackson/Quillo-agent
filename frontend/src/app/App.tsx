@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatScreen } from './components/ChatScreen';
+import { TasksScreen } from './components/TasksScreen';
 import { WorkflowsScreen } from './components/WorkflowsScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { SettingsScreen } from './components/SettingsScreen';
@@ -16,6 +17,8 @@ export default function App() {
     switch (activeTab) {
       case 'chat':
         return <ChatScreen />;
+      case 'tasks':
+        return <TasksScreen />;
       case 'workflows':
         return <WorkflowsScreen />;
       case 'profile':

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, Workflow, User, Settings, Activity, Lock, Menu } from 'lucide-react';
+import { MessageSquare, Workflow, User, Settings, Activity, Lock, Menu, CheckSquare } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -10,6 +10,7 @@ interface SidebarProps {
 
 const menuItems = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'workflows', label: 'Workflows', icon: Workflow },
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'settings', label: 'Settings', icon: Settings },
