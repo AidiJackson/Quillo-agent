@@ -548,3 +548,261 @@ def test_approval_mode_returned_in_list_endpoint():
         # Verify approval_mode field is present
         assert "approval_mode" in matching_item
         assert matching_item["approval_mode"] is not None
+
+
+# Task Plan v2 Phase 1 Tests
+
+def test_create_plan_success():
+    """Test creating a task plan succeeds with valid token and task"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # First create a task intent
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Draft email reply to customer inquiry about pricing"
+            }
+        )
+        assert task_response.status_code == 200
+        task_id = task_response.json()["id"]
+
+        # Now create a plan for this task
+        plan_response = client.post(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert plan_response.status_code == 200
+        plan_data = plan_response.json()
+
+        # Verify response structure
+        assert "id" in plan_data
+        assert "task_intent_id" in plan_data
+        assert "created_at" in plan_data
+        assert "updated_at" in plan_data
+        assert "plan_steps" in plan_data
+        assert "summary" in plan_data
+        assert "status" in plan_data
+
+        # Verify values
+        assert plan_data["task_intent_id"] == task_id
+        assert plan_data["status"] == "draft"
+        assert isinstance(plan_data["plan_steps"], list)
+        assert len(plan_data["plan_steps"]) > 0
+
+
+def test_create_plan_deterministic_output():
+    """Test that plan generation produces deterministic keyword-based output"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create a task with email keywords
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Reply to customer email about refund request"
+            }
+        )
+        task_id = task_response.json()["id"]
+
+        # Create plan
+        plan_response = client.post(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert plan_response.status_code == 200
+        plan_data = plan_response.json()
+
+        # Verify email-related keywords triggered appropriate steps
+        steps = plan_data["plan_steps"]
+        assert len(steps) > 0
+
+        # Summary should be present for email tasks
+        assert plan_data["summary"] is not None
+        summary_lower = plan_data["summary"].lower()
+        assert any(kw in summary_lower for kw in ["email", "reply", "response", "draft"])
+
+
+def test_create_plan_replaces_existing_idempotently():
+    """Test that creating a plan multiple times replaces the previous plan (idempotent)"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create a task
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Prepare quarterly report"
+            }
+        )
+        task_id = task_response.json()["id"]
+
+        # Create first plan
+        plan1_response = client.post(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert plan1_response.status_code == 200
+        plan1_id = plan1_response.json()["id"]
+
+        # Create second plan (should replace first)
+        plan2_response = client.post(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert plan2_response.status_code == 200
+        plan2_id = plan2_response.json()["id"]
+
+        # Verify it's the same plan ID (replaced, not created new)
+        assert plan2_id == plan1_id
+
+        # Verify GET returns the updated plan
+        get_response = client.get(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert get_response.status_code == 200
+        assert get_response.json()["id"] == plan1_id
+
+
+def test_get_plan_success():
+    """Test getting a plan returns correct data"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create task and plan
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Analyze competitor pricing"
+            }
+        )
+        task_id = task_response.json()["id"]
+
+        create_plan_response = client.post(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        created_plan_id = create_plan_response.json()["id"]
+
+        # Now GET the plan
+        get_response = client.get(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert get_response.status_code == 200
+        plan_data = get_response.json()
+
+        # Verify it matches the created plan
+        assert plan_data["id"] == created_plan_id
+        assert plan_data["task_intent_id"] == task_id
+        assert plan_data["status"] == "draft"
+
+
+def test_get_plan_404_when_none_exists():
+    """Test that GET plan returns 404 when no plan exists for task"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create a task but don't create a plan
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "No plan for this task"
+            }
+        )
+        task_id = task_response.json()["id"]
+
+        # Try to GET plan that doesn't exist
+        get_response = client.get(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert get_response.status_code == 404
+        assert "No plan found" in get_response.json()["detail"]
+
+
+def test_plan_steps_contract_shape():
+    """Test that plan_steps have correct contract structure"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create task and plan
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Summarize research findings"
+            }
+        )
+        task_id = task_response.json()["id"]
+
+        plan_response = client.post(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        plan_data = plan_response.json()
+
+        # Verify plan_steps structure
+        steps = plan_data["plan_steps"]
+        assert isinstance(steps, list)
+        assert len(steps) > 0
+
+        # Each step should have step_num and description
+        for step in steps:
+            assert "step_num" in step
+            assert "description" in step
+            assert isinstance(step["step_num"], int)
+            assert isinstance(step["description"], str)
+            assert step["step_num"] > 0
+            assert len(step["description"]) > 0
+
+
+def test_create_plan_requires_auth():
+    """Test that create plan endpoint requires authentication"""
+    with patch.object(settings, 'app_env', 'prod'):
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            # Create a task first (with auth)
+            task_response = client.post(
+                "/ui/api/tasks/intents",
+                headers={"X-UI-Token": TEST_UI_TOKEN},
+                json={
+                    "intent_text": "Test auth task"
+                }
+            )
+            task_id = task_response.json()["id"]
+
+            # Try to create plan without auth
+            response = client.post(f"/ui/api/tasks/{task_id}/plan")
+            assert response.status_code == 401
+
+
+def test_get_plan_requires_auth():
+    """Test that get plan endpoint requires authentication"""
+    with patch.object(settings, 'app_env', 'prod'):
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            # Create task and plan first (with auth)
+            task_response = client.post(
+                "/ui/api/tasks/intents",
+                headers={"X-UI-Token": TEST_UI_TOKEN},
+                json={
+                    "intent_text": "Test auth task"
+                }
+            )
+            task_id = task_response.json()["id"]
+
+            client.post(
+                f"/ui/api/tasks/{task_id}/plan",
+                headers={"X-UI-Token": TEST_UI_TOKEN}
+            )
+
+            # Try to GET plan without auth
+            response = client.get(f"/ui/api/tasks/{task_id}/plan")
+            assert response.status_code == 401
+
+
+def test_create_plan_404_for_nonexistent_task():
+    """Test that creating plan for non-existent task returns 404"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        fake_task_id = "00000000-0000-0000-0000-000000000000"
+
+        response = client.post(
+            f"/ui/api/tasks/{fake_task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        # Should fail with 404 Not Found
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()

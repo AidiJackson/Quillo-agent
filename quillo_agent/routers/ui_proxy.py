@@ -26,6 +26,7 @@ from ..schemas import (
     MultiAgentRequest, MultiAgentResponse, MultiAgentMessage,
     EvidenceRequest, EvidenceResponse,
     TaskIntentCreate, TaskIntentOut,
+    TaskPlanOut,
     UserPrefsUpdate, UserPrefsOut
 )
 from ..services import quillo, advice, memory as memory_service
@@ -35,6 +36,7 @@ from ..services.interaction_contract import enforce_contract, ActionIntent
 from ..services.multi_agent_chat import run_multi_agent_chat
 from ..services.evidence import retrieve_evidence
 from ..services.tasks.service import TaskIntentService
+from ..services.tasks.plan_service import TaskPlanService
 from ..services.user_prefs.service import UserPrefsService
 
 
@@ -844,6 +846,68 @@ async def ui_list_task_intents(
         )
         for task_intent in task_intents
     ]
+
+
+# Task Plan endpoints (v2 Phase 1)
+
+@router.post("/tasks/{task_id}/plan", response_model=TaskPlanOut)
+async def ui_create_task_plan(
+    task_id: str,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> TaskPlanOut:
+    """
+    Create (or replace) a plan for a task intent.
+
+    - Generates a deterministic plan based on task keywords
+    - Returns the created plan
+    - Idempotent: calling multiple times replaces the existing plan
+    """
+    logger.info(f"UI POST /tasks/{task_id}/plan")
+
+    try:
+        plan = TaskPlanService.create_plan(db, task_id)
+    except ValueError as e:
+        logger.warning(f"Invalid task plan creation: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return TaskPlanOut(
+        id=plan.id,
+        task_intent_id=plan.task_intent_id,
+        created_at=plan.created_at.isoformat(),
+        updated_at=plan.updated_at.isoformat(),
+        plan_steps=plan.plan_steps,
+        summary=plan.summary,
+        status=plan.status.value
+    )
+
+
+@router.get("/tasks/{task_id}/plan", response_model=TaskPlanOut)
+async def ui_get_task_plan(
+    task_id: str,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> TaskPlanOut:
+    """
+    Get the plan for a task intent.
+
+    Returns 404 if no plan exists for this task.
+    """
+    logger.info(f"UI GET /tasks/{task_id}/plan")
+
+    plan = TaskPlanService.get_plan(db, task_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail=f"No plan found for task {task_id}")
+
+    return TaskPlanOut(
+        id=plan.id,
+        task_intent_id=plan.task_intent_id,
+        created_at=plan.created_at.isoformat(),
+        updated_at=plan.updated_at.isoformat(),
+        plan_steps=plan.plan_steps,
+        summary=plan.summary,
+        status=plan.status.value
+    )
 
 
 @router.get("/prefs", response_model=UserPrefsOut)

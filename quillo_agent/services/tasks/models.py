@@ -1,9 +1,9 @@
 """
-Task Intent model (v1)
+Task Intent model (v1) and Task Plan model (v2)
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Text, DateTime, Enum, JSON
+from sqlalchemy import Column, String, Text, DateTime, Enum, JSON, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 import enum
 
@@ -46,3 +46,30 @@ class TaskIntent(Base):
 
     # Approval mode snapshot (v1)
     approval_mode = Column(String, nullable=False, default="plan_then_auto")  # ApprovalMode enum value
+
+
+class TaskPlanStatus(str, enum.Enum):
+    """Task plan status enum"""
+    DRAFT = "draft"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class TaskPlan(Base):
+    """
+    Task Plan model (v2 Phase 1)
+
+    Stores the execution plan for a task intent.
+    V2 Phase 1: storage and display only, no execution.
+    """
+    __tablename__ = "task_plans"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    task_intent_id = Column(String, ForeignKey("task_intents.id"), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Plan content
+    plan_steps = Column(JSON, nullable=False)  # list[dict] - each step has: step_num, description, tool_name?, args?
+    summary = Column(Text, nullable=True)  # Brief summary of what the plan will do
+    status = Column(Enum(TaskPlanStatus), default=TaskPlanStatus.DRAFT, nullable=False)
