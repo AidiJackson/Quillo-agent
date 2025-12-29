@@ -806,3 +806,145 @@ def test_create_plan_404_for_nonexistent_task():
         # Should fail with 404 Not Found
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
+
+
+# Task Plan Approval v1 Tests (Phase 2)
+
+def test_approve_plan_success():
+    """Test approving a plan succeeds (draft -> approved)"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create task and plan
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={"intent_text": "Test plan approval"}
+        )
+        task_id = task_response.json()["id"]
+
+        client.post(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+
+        # Approve the plan
+        approve_response = client.post(
+            f"/ui/api/tasks/{task_id}/plan/approve",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert approve_response.status_code == 200
+        plan_data = approve_response.json()
+
+        # Verify status changed to approved
+        assert plan_data["status"] == "approved"
+        assert plan_data["approved_at"] is not None
+        assert "approved_at" in plan_data
+
+
+def test_approve_plan_idempotent():
+    """Test that approving an already approved plan is idempotent"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create task and plan
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={"intent_text": "Test idempotent approval"}
+        )
+        task_id = task_response.json()["id"]
+
+        client.post(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+
+        # Approve once
+        first_approval = client.post(
+            f"/ui/api/tasks/{task_id}/plan/approve",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        first_approved_at = first_approval.json()["approved_at"]
+
+        # Approve again (should be idempotent)
+        second_approval = client.post(
+            f"/ui/api/tasks/{task_id}/plan/approve",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert second_approval.status_code == 200
+        second_data = second_approval.json()
+
+        # Status should still be approved
+        assert second_data["status"] == "approved"
+        # approved_at should be unchanged
+        assert second_data["approved_at"] == first_approved_at
+
+
+def test_approve_plan_404_when_no_plan():
+    """Test that approving when no plan exists returns 404"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create task but don't create plan
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={"intent_text": "No plan to approve"}
+        )
+        task_id = task_response.json()["id"]
+
+        # Try to approve non-existent plan
+        approve_response = client.post(
+            f"/ui/api/tasks/{task_id}/plan/approve",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert approve_response.status_code == 404
+        assert "No plan found" in approve_response.json()["detail"]
+
+
+def test_approve_plan_requires_auth():
+    """Test that approve plan endpoint requires authentication"""
+    with patch.object(settings, 'app_env', 'prod'):
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            # Use a fake task ID - we're just testing auth, not the actual approval
+            fake_task_id = "00000000-0000-0000-0000-000000000000"
+
+            # Try to approve without auth token (should fail with 401)
+            response = client.post(f"/ui/api/tasks/{fake_task_id}/plan/approve")
+            assert response.status_code == 401
+
+
+def test_get_plan_returns_approved_at():
+    """Test that GET plan returns approved_at field after approval"""
+    import time
+    time.sleep(2)  # Avoid rate limit in full test suite
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create task and plan
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={"intent_text": "Test approved_at field"}
+        )
+        task_id = task_response.json()["id"]
+
+        # Create plan
+        create_plan_response = client.post(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert create_plan_response.json()["approved_at"] is None
+
+        # Approve plan
+        client.post(
+            f"/ui/api/tasks/{task_id}/plan/approve",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+
+        # GET plan and verify approved_at is present
+        get_response = client.get(
+            f"/ui/api/tasks/{task_id}/plan",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert get_response.status_code == 200
+        plan_data = get_response.json()
+
+        assert plan_data["status"] == "approved"
+        assert plan_data["approved_at"] is not None
+        # Verify it's a valid ISO timestamp
+        from datetime import datetime
+        datetime.fromisoformat(plan_data["approved_at"].replace('Z', '+00:00'))

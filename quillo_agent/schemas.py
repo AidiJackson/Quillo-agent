@@ -236,6 +236,7 @@ class TaskPlanOut(BaseModel):
     plan_steps: List[Dict] = Field(..., description="List of plan steps")
     summary: Optional[str] = Field(None, description="Plan summary")
     status: str = Field(..., description="Plan status: draft, approved, or rejected")
+    approved_at: Optional[str] = Field(None, description="ISO timestamp when plan was approved (v2 Phase 2)")
 
 
 # User Preferences Module v1 Schemas

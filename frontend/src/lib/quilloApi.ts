@@ -511,6 +511,7 @@ export interface TaskPlanOut {
   plan_steps: TaskPlanStep[];
   summary: string | null;
   status: 'draft' | 'approved' | 'rejected';
+  approved_at: string | null;
 }
 
 /**
@@ -640,6 +641,28 @@ export async function fetchTaskPlan(taskId: string): Promise<TaskPlanOut | null>
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Plan fetch failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+export async function approveTaskPlan(taskId: string): Promise<TaskPlanOut> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/plan/approve`, {
+    method: 'POST',
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Plan approval failed: ${response.status} - ${error}`);
   }
 
   return response.json();

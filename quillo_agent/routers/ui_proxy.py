@@ -878,7 +878,8 @@ async def ui_create_task_plan(
         updated_at=plan.updated_at.isoformat(),
         plan_steps=plan.plan_steps,
         summary=plan.summary,
-        status=plan.status.value
+        status=plan.status.value,
+        approved_at=plan.approved_at.isoformat() if plan.approved_at else None
     )
 
 
@@ -906,7 +907,42 @@ async def ui_get_task_plan(
         updated_at=plan.updated_at.isoformat(),
         plan_steps=plan.plan_steps,
         summary=plan.summary,
-        status=plan.status.value
+        status=plan.status.value,
+        approved_at=plan.approved_at.isoformat() if plan.approved_at else None
+    )
+
+
+@router.post("/tasks/{task_id}/plan/approve", response_model=TaskPlanOut)
+async def ui_approve_task_plan(
+    task_id: str,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> TaskPlanOut:
+    """
+    Approve a plan for a task intent.
+
+    Sets status=approved and approved_at=now.
+    Idempotent: if already approved, returns unchanged.
+
+    Returns 404 if no task or no plan exists.
+    """
+    logger.info(f"UI POST /tasks/{task_id}/plan/approve")
+
+    try:
+        plan = TaskPlanService.approve_plan(db, task_id)
+    except ValueError as e:
+        logger.warning(f"Invalid plan approval: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return TaskPlanOut(
+        id=plan.id,
+        task_intent_id=plan.task_intent_id,
+        created_at=plan.created_at.isoformat(),
+        updated_at=plan.updated_at.isoformat(),
+        plan_steps=plan.plan_steps,
+        summary=plan.summary,
+        status=plan.status.value,
+        approved_at=plan.approved_at.isoformat() if plan.approved_at else None
     )
 
 

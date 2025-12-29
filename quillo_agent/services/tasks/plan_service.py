@@ -87,3 +87,42 @@ class TaskPlanService:
             Updated TaskPlan if found, None otherwise
         """
         return TaskPlanRepository.update_status(db, plan_id, status)
+
+    @staticmethod
+    def approve_plan(
+        db: Session,
+        task_intent_id: str,
+        user_key: Optional[str] = None
+    ) -> Optional[TaskPlan]:
+        """
+        Approve a plan for a task intent.
+
+        Sets status=approved and approved_at=now.
+        Idempotent: if already approved, returns unchanged.
+
+        Args:
+            db: Database session
+            task_intent_id: ID of the task intent
+            user_key: Optional user identifier (for future use)
+
+        Returns:
+            Approved TaskPlan if found, None otherwise
+
+        Raises:
+            ValueError: If task intent doesn't exist
+        """
+        # Verify task intent exists
+        task_intent = TaskIntentService.get_by_id(db, task_intent_id)
+        if not task_intent:
+            raise ValueError(f"Task intent {task_intent_id} not found")
+
+        logger.info(f"Approving plan for task {task_intent_id}")
+
+        # Approve plan
+        plan = TaskPlanRepository.approve_by_task_id(db, task_intent_id)
+
+        if not plan:
+            raise ValueError(f"No plan found for task {task_intent_id}")
+
+        logger.info(f"Approved plan {plan.id} for task {task_intent_id}")
+        return plan
