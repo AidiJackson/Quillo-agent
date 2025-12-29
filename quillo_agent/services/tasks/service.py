@@ -7,6 +7,7 @@ from loguru import logger
 
 from .models import TaskIntent, TaskIntentStatus
 from .repo import TaskIntentRepository
+from ..user_prefs.service import UserPrefsService
 
 
 def generate_scope(intent_text: str) -> Tuple[List[str], List[str], str]:
@@ -70,7 +71,8 @@ class TaskIntentService:
         user_key: Optional[str] = None,
         scope_will_do: Optional[List[str]] = None,
         scope_wont_do: Optional[List[str]] = None,
-        scope_done_when: Optional[str] = None
+        scope_done_when: Optional[str] = None,
+        approval_mode: Optional[str] = None
     ) -> TaskIntent:
         """
         Create a new task intent.
@@ -83,6 +85,7 @@ class TaskIntentService:
             scope_will_do: What the task will do (auto-generated if not provided)
             scope_wont_do: What the task won't do (auto-generated if not provided)
             scope_done_when: When the task is considered done (auto-generated if not provided)
+            approval_mode: Optional override for approval mode (defaults to user prefs)
 
         Returns:
             Created TaskIntent instance
@@ -107,6 +110,15 @@ class TaskIntentService:
             scope_wont_do = scope_wont_do or generated_wont_do
             scope_done_when = scope_done_when or generated_done_when
 
+        # Snapshot approval_mode from user prefs if not explicitly provided
+        if approval_mode is None:
+            # Determine user_key for prefs lookup (default to "global")
+            prefs_user_key = user_key or "global"
+            logger.info(f"Fetching user prefs for approval_mode snapshot: user_key={prefs_user_key}")
+            user_prefs = UserPrefsService.get_prefs(db, prefs_user_key)
+            approval_mode = user_prefs.approval_mode
+            logger.info(f"Snapshotted approval_mode from prefs: {approval_mode}")
+
         task_intent = TaskIntentRepository.create(
             db=db,
             intent_text=intent_text.strip(),
@@ -114,10 +126,11 @@ class TaskIntentService:
             user_key=user_key,
             scope_will_do=scope_will_do,
             scope_wont_do=scope_wont_do,
-            scope_done_when=scope_done_when
+            scope_done_when=scope_done_when,
+            approval_mode=approval_mode
         )
 
-        logger.info(f"Created task intent: id={task_intent.id}, status={task_intent.status}")
+        logger.info(f"Created task intent: id={task_intent.id}, status={task_intent.status}, approval_mode={task_intent.approval_mode}")
         return task_intent
 
     @staticmethod

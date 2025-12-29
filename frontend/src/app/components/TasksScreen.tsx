@@ -87,6 +87,19 @@ export function TasksScreen() {
     }
   };
 
+  const getApprovalModeLabel = (approvalMode: string): string => {
+    switch (approvalMode) {
+      case 'confirm_every_step':
+        return 'Confirm every step';
+      case 'plan_then_auto':
+        return 'Plan then auto';
+      case 'auto_lowrisk_confirm_highrisk':
+        return 'Auto low-risk, confirm high-risk';
+      default:
+        return approvalMode;
+    }
+  };
+
   const toggleScope = (taskId: string) => {
     setExpandedScopes(prev => {
       const next = new Set(prev);
@@ -194,8 +207,11 @@ export function TasksScreen() {
                       )}
                     </div>
                   </div>
-                  <div className="flex-none">
+                  <div className="flex-none flex flex-col items-end gap-1.5">
                     {getStatusBadge(task.status)}
+                    <div className="text-xs text-muted-foreground">
+                      Approval: {getApprovalModeLabel(task.approval_mode)}
+                    </div>
                   </div>
                 </div>
 

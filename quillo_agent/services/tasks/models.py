@@ -43,3 +43,6 @@ class TaskIntent(Base):
     scope_will_do = Column(JSON, nullable=True)  # list[str]
     scope_wont_do = Column(JSON, nullable=True)  # list[str]
     scope_done_when = Column(Text, nullable=True)  # str
+
+    # Approval mode snapshot (v1)
+    approval_mode = Column(String, nullable=False, default="plan_then_auto")  # ApprovalMode enum value

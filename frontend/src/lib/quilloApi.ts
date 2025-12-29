@@ -490,6 +490,8 @@ export interface TaskIntentOut {
   scope_will_do?: string[] | null;
   scope_wont_do?: string[] | null;
   scope_done_when?: string | null;
+  // Approval mode snapshot v1
+  approval_mode: 'confirm_every_step' | 'plan_then_auto' | 'auto_lowrisk_confirm_highrisk';
 }
 
 /**
