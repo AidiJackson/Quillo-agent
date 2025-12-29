@@ -134,6 +134,20 @@ class TaskIntentService:
         return task_intent
 
     @staticmethod
+    def get_by_id(db: Session, task_intent_id: str) -> Optional[TaskIntent]:
+        """
+        Get task intent by ID.
+
+        Args:
+            db: Database session
+            task_intent_id: Task intent ID
+
+        Returns:
+            TaskIntent if found, None otherwise
+        """
+        return TaskIntentRepository.get_by_id(db, task_intent_id)
+
+    @staticmethod
     def list_intents(
         db: Session,
         user_key: Optional[str] = None,

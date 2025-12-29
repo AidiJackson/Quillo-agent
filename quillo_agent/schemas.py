@@ -219,6 +219,25 @@ class TaskIntentOut(BaseModel):
     approval_mode: str = Field(..., description="Approval mode at task creation: confirm_every_step, plan_then_auto, or auto_lowrisk_confirm_highrisk")
 
 
+# Task Plan Module v2 Schemas
+
+class TaskPlanStepOut(BaseModel):
+    """Task plan step output schema"""
+    step_num: int = Field(..., description="Step number (1-indexed)")
+    description: str = Field(..., description="Step description")
+
+
+class TaskPlanOut(BaseModel):
+    """Task plan output schema"""
+    id: str = Field(..., description="Plan UUID")
+    task_intent_id: str = Field(..., description="FK to task intent")
+    created_at: str = Field(..., description="ISO timestamp of creation")
+    updated_at: str = Field(..., description="ISO timestamp of last update")
+    plan_steps: List[Dict] = Field(..., description="List of plan steps")
+    summary: Optional[str] = Field(None, description="Plan summary")
+    status: str = Field(..., description="Plan status: draft, approved, or rejected")
+
+
 # User Preferences Module v1 Schemas
 
 class UserPrefsUpdate(BaseModel):

@@ -495,6 +495,25 @@ export interface TaskIntentOut {
 }
 
 /**
+ * Task Plan types (v2 Phase 1)
+ */
+
+export interface TaskPlanStep {
+  step_num: number;
+  description: string;
+}
+
+export interface TaskPlanOut {
+  id: string;
+  task_intent_id: string;
+  created_at: string;
+  updated_at: string;
+  plan_steps: TaskPlanStep[];
+  summary: string | null;
+  status: 'draft' | 'approved' | 'rejected';
+}
+
+/**
  * Fetch task intents (read-only, v1)
  * Lists task intents ordered by most recent first
  * If userKey provided, filter by user. Otherwise, return recent intents globally.
@@ -569,6 +588,58 @@ export async function createTaskIntent(
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Task intent creation failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Task Plan API functions (v2 Phase 1)
+ */
+
+export async function createTaskPlan(taskId: string): Promise<TaskPlanOut> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/plan`, {
+    method: 'POST',
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Plan creation failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+export async function fetchTaskPlan(taskId: string): Promise<TaskPlanOut | null> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/plan`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (response.status === 404) {
+    return null; // No plan exists
+  }
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Plan fetch failed: ${response.status} - ${error}`);
   }
 
   return response.json();

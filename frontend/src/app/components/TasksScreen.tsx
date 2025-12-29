@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { fetchTaskIntents, TaskIntentOut } from '../../lib/quilloApi';
-import { CheckCircle2, Circle, XCircle, RefreshCw, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { fetchTaskIntents, TaskIntentOut, TaskPlanOut, createTaskPlan, fetchTaskPlan } from '../../lib/quilloApi';
+import { CheckCircle2, Circle, XCircle, RefreshCw, Loader2, ChevronDown, ChevronRight, List, FileText } from 'lucide-react';
 
 /**
  * TasksScreen - Read-only view of Task Intents (v1)
@@ -14,6 +14,9 @@ export function TasksScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedScopes, setExpandedScopes] = useState<Set<string>>(new Set());
+  const [expandedPlans, setExpandedPlans] = useState<Set<string>>(new Set());
+  const [plans, setPlans] = useState<Record<string, TaskPlanOut>>({});
+  const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
 
   const loadTasks = async (showRefreshing = false) => {
     try {
@@ -101,6 +104,56 @@ export function TasksScreen() {
 
   const hasScope = (task: TaskIntentOut): boolean => {
     return !!(task.scope_will_do?.length || task.scope_wont_do?.length || task.scope_done_when);
+  };
+
+  const togglePlan = (taskId: string) => {
+    setExpandedPlans(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  const handleGeneratePlan = async (taskId: string) => {
+    try {
+      setGeneratingPlan(taskId);
+      const plan = await createTaskPlan(taskId);
+      setPlans(prev => ({ ...prev, [taskId]: plan }));
+      setExpandedPlans(prev => new Set(prev).add(taskId));
+    } catch (err) {
+      console.error('Failed to generate plan:', err);
+    } finally {
+      setGeneratingPlan(null);
+    }
+  };
+
+  const getPlanStatus = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
+            Draft
+          </span>
+        );
+      case 'approved':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+            Approved
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+            Rejected
+          </span>
+        );
+      default:
+        return null;
+    }
   };
 
   if (loading) {
@@ -248,6 +301,67 @@ export function TasksScreen() {
                     )}
                   </div>
                 )}
+
+                {/* Task Plan v2 Phase 1 */}
+                <div className="mt-3 pt-3 border-t border-border/50">
+                  {plans[task.id] ? (
+                    <>
+                      <button
+                        onClick={() => togglePlan(task.id)}
+                        className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full"
+                      >
+                        {expandedPlans.has(task.id) ? (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        )}
+                        <List className="w-3.5 h-3.5" />
+                        <span>Execution Plan</span>
+                        <div className="ml-auto">{getPlanStatus(plans[task.id].status)}</div>
+                      </button>
+
+                      {expandedPlans.has(task.id) && (
+                        <div className="mt-3 space-y-3 text-xs">
+                          {plans[task.id].summary && (
+                            <div className="p-2 bg-accent/50 rounded">
+                              <p className="text-foreground font-medium">{plans[task.id].summary}</p>
+                            </div>
+                          )}
+
+                          <div>
+                            <h4 className="font-semibold text-foreground mb-2">Steps:</h4>
+                            <ol className="space-y-2">
+                              {plans[task.id].plan_steps.map((step, idx) => (
+                                <li key={idx} className="flex gap-2">
+                                  <span className="font-semibold text-muted-foreground min-w-[20px]">{step.step_num}.</span>
+                                  <span className="text-muted-foreground leading-relaxed">{step.description}</span>
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleGeneratePlan(task.id)}
+                      disabled={generatingPlan === task.id}
+                      className="flex items-center gap-2 text-xs font-medium text-primary hover:text-primary/80 transition-colors w-full disabled:opacity-50"
+                    >
+                      {generatingPlan === task.id ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Generating plan...</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Generate execution plan</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
