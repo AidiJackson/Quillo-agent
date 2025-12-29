@@ -791,7 +791,8 @@ async def ui_create_task_intent(
         user_key=task_intent.user_key,
         scope_will_do=task_intent.scope_will_do,
         scope_wont_do=task_intent.scope_wont_do,
-        scope_done_when=task_intent.scope_done_when
+        scope_done_when=task_intent.scope_done_when,
+        approval_mode=task_intent.approval_mode
     )
 
 
@@ -838,7 +839,8 @@ async def ui_list_task_intents(
             user_key=task_intent.user_key,
             scope_will_do=task_intent.scope_will_do,
             scope_wont_do=task_intent.scope_wont_do,
-            scope_done_when=task_intent.scope_done_when
+            scope_done_when=task_intent.scope_done_when,
+            approval_mode=task_intent.approval_mode
         )
         for task_intent in task_intents
     ]

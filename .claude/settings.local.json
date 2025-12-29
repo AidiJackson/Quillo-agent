@@ -40,7 +40,12 @@
       "Bash(echo:*)",
       "Bash(test:*)",
       "Bash(lsof:*)",
-      "Bash(xargs kill:*)"
+      "Bash(xargs kill:*)",
+      "Bash(git merge:*)",
+      "Bash(replit)",
+      "Bash(start)",
+      "Bash(alembic upgrade:*)",
+      "Bash(alembic current:*)"
     ]
   }
 }

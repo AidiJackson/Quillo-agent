@@ -19,7 +19,8 @@ class TaskIntentRepository:
         user_key: Optional[str] = None,
         scope_will_do: Optional[List[str]] = None,
         scope_wont_do: Optional[List[str]] = None,
-        scope_done_when: Optional[str] = None
+        scope_done_when: Optional[str] = None,
+        approval_mode: str = "plan_then_auto"
     ) -> TaskIntent:
         """
         Create a new task intent.
@@ -32,6 +33,7 @@ class TaskIntentRepository:
             scope_will_do: What the task will do (max 5 bullets)
             scope_wont_do: What the task won't do (max 5 bullets)
             scope_done_when: When the task is considered done
+            approval_mode: Approval mode snapshot (default: plan_then_auto)
 
         Returns:
             Created TaskIntent instance
@@ -43,7 +45,8 @@ class TaskIntentRepository:
             status=TaskIntentStatus.APPROVED,  # v1: all start as approved
             scope_will_do=scope_will_do,
             scope_wont_do=scope_wont_do,
-            scope_done_when=scope_done_when
+            scope_done_when=scope_done_when,
+            approval_mode=approval_mode
         )
         db.add(task_intent)
         db.commit()
