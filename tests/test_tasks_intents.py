@@ -403,3 +403,148 @@ def test_scope_returned_in_list_endpoint():
         assert "scope_done_when" in matching_item
         assert matching_item["scope_will_do"] is not None
         assert len(matching_item["scope_will_do"]) > 0
+
+
+# Approval Mode Snapshot v1 Tests
+
+def test_approval_mode_defaults_to_plan_then_auto():
+    """Test that approval_mode defaults to plan_then_auto when no prefs exist"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Test approval mode default",
+                "user_key": "approval-default-test-user"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify approval_mode is present and defaults to plan_then_auto
+        assert "approval_mode" in data
+        assert data["approval_mode"] == "plan_then_auto"
+
+
+def test_approval_mode_snapshots_current_pref():
+    """Test that approval_mode is snapshotted from current user prefs"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # First, set user prefs to confirm_every_step
+        prefs_response = client.post(
+            "/ui/api/prefs?user_key=approval-snapshot-test-user",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "approval_mode": "confirm_every_step"
+            }
+        )
+        assert prefs_response.status_code == 200
+
+        # Now create a task intent
+        task_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Test approval mode snapshot",
+                "user_key": "approval-snapshot-test-user"
+            }
+        )
+        assert task_response.status_code == 200
+        task_data = task_response.json()
+
+        # Verify the task has the snapshotted approval_mode
+        assert task_data["approval_mode"] == "confirm_every_step"
+
+
+def test_approval_mode_snapshot_is_immutable():
+    """Test that changing user prefs doesn't affect existing tasks"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Set initial prefs to plan_then_auto
+        client.post(
+            "/ui/api/prefs?user_key=approval-immutable-test-user",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "approval_mode": "plan_then_auto"
+            }
+        )
+
+        # Create first task with plan_then_auto
+        task1_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "First task",
+                "user_key": "approval-immutable-test-user"
+            }
+        )
+        assert task1_response.status_code == 200
+        task1_id = task1_response.json()["id"]
+        assert task1_response.json()["approval_mode"] == "plan_then_auto"
+
+        # Update prefs to auto_lowrisk_confirm_highrisk
+        client.post(
+            "/ui/api/prefs?user_key=approval-immutable-test-user",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "approval_mode": "auto_lowrisk_confirm_highrisk"
+            }
+        )
+
+        # Create second task with new pref value
+        task2_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Second task",
+                "user_key": "approval-immutable-test-user"
+            }
+        )
+        assert task2_response.status_code == 200
+        task2_id = task2_response.json()["id"]
+        assert task2_response.json()["approval_mode"] == "auto_lowrisk_confirm_highrisk"
+
+        # List tasks and verify first task still has original approval_mode
+        list_response = client.get(
+            "/ui/api/tasks/intents?user_key=approval-immutable-test-user",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert list_response.status_code == 200
+        tasks = list_response.json()
+
+        task1 = next(t for t in tasks if t["id"] == task1_id)
+        task2 = next(t for t in tasks if t["id"] == task2_id)
+
+        # Verify task1 still has plan_then_auto (unchanged)
+        assert task1["approval_mode"] == "plan_then_auto"
+        # Verify task2 has auto_lowrisk_confirm_highrisk (new pref)
+        assert task2["approval_mode"] == "auto_lowrisk_confirm_highrisk"
+
+
+def test_approval_mode_returned_in_list_endpoint():
+    """Test that approval_mode is returned in list endpoint"""
+    with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+        # Create a task intent
+        create_response = client.post(
+            "/ui/api/tasks/intents",
+            headers={"X-UI-Token": TEST_UI_TOKEN},
+            json={
+                "intent_text": "Test approval mode in list",
+                "user_key": "approval-list-test-user"
+            }
+        )
+        assert create_response.status_code == 200
+        created_id = create_response.json()["id"]
+
+        # List task intents
+        list_response = client.get(
+            "/ui/api/tasks/intents?user_key=approval-list-test-user",
+            headers={"X-UI-Token": TEST_UI_TOKEN}
+        )
+        assert list_response.status_code == 200
+        data = list_response.json()
+
+        # Find our created intent
+        matching_item = next(item for item in data if item["id"] == created_id)
+
+        # Verify approval_mode field is present
+        assert "approval_mode" in matching_item
+        assert matching_item["approval_mode"] is not None
