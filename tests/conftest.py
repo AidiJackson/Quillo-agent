@@ -1,15 +1,14 @@
 """
 Pytest configuration for test suite
 """
+import os
 import pytest
+
+# This runs before test modules import app code.
+os.environ["PYTEST_RUNNING"] = "1"
 
 
 @pytest.fixture(scope="session")
 def anyio_backend():
-    """
-    Configure pytest-anyio to use only asyncio backend.
-
-    This prevents tests from being run with trio backend,
-    which is not installed in this project.
-    """
+    """Use asyncio backend for anyio tests."""
     return "asyncio"
