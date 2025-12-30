@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { fetchTaskIntents, TaskIntentOut, TaskPlanOut, createTaskPlan, fetchTaskPlan, approveTaskPlan } from '../../lib/quilloApi';
-import { CheckCircle2, Circle, XCircle, RefreshCw, Loader2, ChevronDown, ChevronRight, List, FileText, Check } from 'lucide-react';
+import { fetchTaskIntents, TaskIntentOut, TaskPlanOut, createTaskPlan, fetchTaskPlan, approveTaskPlan, fetchTaskSteps, completeTaskStep, TaskStepsOut } from '../../lib/quilloApi';
+import { CheckCircle2, Circle, XCircle, RefreshCw, Loader2, ChevronDown, ChevronRight, List, FileText, Check, Play } from 'lucide-react';
 
 /**
  * TasksScreen - Read-only view of Task Intents (v1)
@@ -18,6 +18,9 @@ export function TasksScreen() {
   const [plans, setPlans] = useState<Record<string, TaskPlanOut>>({});
   const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
   const [approvingPlan, setApprovingPlan] = useState<string | null>(null);
+  const [stepStates, setStepStates] = useState<Record<string, TaskStepsOut>>({});
+  const [loadingSteps, setLoadingSteps] = useState<string | null>(null);
+  const [runningStep, setRunningStep] = useState<string | null>(null); // taskId:stepNum
 
   const loadTasks = async (showRefreshing = false) => {
     try {
@@ -107,7 +110,9 @@ export function TasksScreen() {
     return !!(task.scope_will_do?.length || task.scope_wont_do?.length || task.scope_done_when);
   };
 
-  const togglePlan = (taskId: string) => {
+  const togglePlan = async (taskId: string) => {
+    const isCurrentlyExpanded = expandedPlans.has(taskId);
+
     setExpandedPlans(prev => {
       const next = new Set(prev);
       if (next.has(taskId)) {
@@ -117,6 +122,37 @@ export function TasksScreen() {
       }
       return next;
     });
+
+    // Load step state when expanding an approved plan
+    if (!isCurrentlyExpanded && plans[taskId]?.status === 'approved' && !stepStates[taskId]) {
+      await loadStepState(taskId);
+    }
+  };
+
+  const loadStepState = async (taskId: string) => {
+    try {
+      setLoadingSteps(taskId);
+      const steps = await fetchTaskSteps(taskId);
+      setStepStates(prev => ({ ...prev, [taskId]: steps }));
+    } catch (err) {
+      console.error('Failed to load step state:', err);
+    } finally {
+      setLoadingSteps(null);
+    }
+  };
+
+  const handleRunStep = async (taskId: string, stepNum: number) => {
+    try {
+      const stepKey = `${taskId}:${stepNum}`;
+      setRunningStep(stepKey);
+      await completeTaskStep(taskId, stepNum);
+      // Refresh step state
+      await loadStepState(taskId);
+    } catch (err) {
+      console.error('Failed to run step:', err);
+    } finally {
+      setRunningStep(null);
+    }
   };
 
   const handleGeneratePlan = async (taskId: string) => {
@@ -343,14 +379,64 @@ export function TasksScreen() {
 
                           <div>
                             <h4 className="font-semibold text-foreground mb-2">Steps:</h4>
-                            <ol className="space-y-2">
-                              {plans[task.id].plan_steps.map((step, idx) => (
-                                <li key={idx} className="flex gap-2">
-                                  <span className="font-semibold text-muted-foreground min-w-[20px]">{step.step_num}.</span>
-                                  <span className="text-muted-foreground leading-relaxed">{step.description}</span>
-                                </li>
-                              ))}
-                            </ol>
+                            {loadingSteps === task.id ? (
+                              <div className="flex items-center gap-2 p-2 text-muted-foreground">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span className="text-xs">Loading step state...</span>
+                              </div>
+                            ) : (
+                              <ol className="space-y-2">
+                                {plans[task.id].plan_steps.map((step, idx) => {
+                                  const stepState = stepStates[task.id]?.steps.find(s => s.step_num === step.step_num);
+                                  const isCompleted = stepState?.status === 'completed';
+                                  const isPlanApproved = plans[task.id].status === 'approved';
+                                  const stepKey = `${task.id}:${step.step_num}`;
+                                  const isRunning = runningStep === stepKey;
+
+                                  return (
+                                    <li key={idx} className="flex items-start gap-2">
+                                      {isPlanApproved && stepState && (
+                                        <div className="flex-none mt-0.5">
+                                          {isCompleted ? (
+                                            <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+                                          ) : (
+                                            <Circle className="w-4 h-4 text-muted-foreground" />
+                                          )}
+                                        </div>
+                                      )}
+                                      <span className="font-semibold text-muted-foreground min-w-[20px]">{step.step_num}.</span>
+                                      <div className="flex-1 min-w-0">
+                                        <span className="text-muted-foreground leading-relaxed">{step.description}</span>
+                                        {isPlanApproved && stepState && !isCompleted && (
+                                          <button
+                                            onClick={() => handleRunStep(task.id, step.step_num)}
+                                            disabled={isRunning}
+                                            className="flex items-center gap-1.5 mt-1.5 px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors disabled:opacity-50 text-xs font-medium"
+                                          >
+                                            {isRunning ? (
+                                              <>
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                <span>Running...</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Play className="w-3 h-3" />
+                                                <span>Run step</span>
+                                              </>
+                                            )}
+                                          </button>
+                                        )}
+                                        {isPlanApproved && stepState?.completed_at && (
+                                          <div className="mt-1 text-[10px] text-muted-foreground">
+                                            Completed {new Date(stepState.completed_at).toLocaleString()}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </li>
+                                  );
+                                })}
+                              </ol>
+                            )}
                           </div>
 
                           {/* Approval section */}
