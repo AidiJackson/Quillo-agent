@@ -1,11 +1,10 @@
 #!/bin/bash
-# start-dev.sh - Canonical backend startup for Replit Run button
+# start-dev.sh - Startup script for Replit Run button
 # Usage: bash start-dev.sh
 #
 # This script:
-# - Stops any existing uvicorn processes
-# - Starts the backend via `make run`
-# - Exits non-zero if startup fails
+# - Stops any existing processes
+# - Starts both the backend (port 8000) and frontend (port 5000)
 
 set -e
 
@@ -15,56 +14,42 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}Starting Quillo backend (canonical workflow)...${NC}"
+echo -e "${GREEN}Starting Quillo (backend + frontend)...${NC}"
 
-# STEP 1: Kill any existing uvicorn processes on port 8000
-echo -e "${YELLOW}Checking for existing uvicorn processes...${NC}"
+# STEP 1: Kill any existing processes on ports 5000 and 8000
+echo -e "${YELLOW}Checking for existing processes...${NC}"
 
-# Try multiple methods to find existing processes
 EXISTING_PIDS=$(pgrep -f "uvicorn app:app" 2>/dev/null || true)
 
-# Also check port 8000 using lsof if available
 if command -v lsof &> /dev/null; then
-    PORT_PIDS=$(lsof -ti :8000 2>/dev/null || true)
+    PORT_PIDS=$(lsof -ti :8000 -ti :5000 2>/dev/null || true)
     EXISTING_PIDS="$EXISTING_PIDS $PORT_PIDS"
 fi
 
-# Remove duplicates and empty entries
 EXISTING_PIDS=$(echo "$EXISTING_PIDS" | tr ' ' '\n' | sort -u | grep -v '^$' || true)
 
 if [ -n "$EXISTING_PIDS" ]; then
-    echo -e "${YELLOW}Found existing uvicorn processes: $EXISTING_PIDS${NC}"
-    echo -e "${YELLOW}Stopping them gracefully...${NC}"
-
+    echo -e "${YELLOW}Stopping existing processes: $EXISTING_PIDS${NC}"
     for PID in $EXISTING_PIDS; do
-        if kill -0 "$PID" 2>/dev/null; then
-            echo "  Stopping PID $PID..."
-            kill "$PID" 2>/dev/null || true
-        fi
+        kill "$PID" 2>/dev/null || true
     done
-
-    # Wait up to 3 seconds for graceful shutdown
     sleep 1
-
-    # Force kill if still alive
     for PID in $EXISTING_PIDS; do
-        if kill -0 "$PID" 2>/dev/null; then
-            echo "  Force killing PID $PID..."
-            kill -9 "$PID" 2>/dev/null || true
-        fi
+        kill -9 "$PID" 2>/dev/null || true
     done
-
     echo -e "${GREEN}Existing processes stopped.${NC}"
 else
-    echo -e "${GREEN}No existing uvicorn processes found.${NC}"
+    echo -e "${GREEN}No existing processes found.${NC}"
 fi
 
-# STEP 2: Start backend using the official command
-echo -e "${GREEN}Starting backend via 'make run'...${NC}"
+# STEP 2: Start backend in background
+echo -e "${GREEN}Starting backend on port 8000...${NC}"
+make run &
+BACKEND_PID=$!
 
-# Run in foreground so Replit can manage it
-exec make run
+# Wait a moment for backend to initialize
+sleep 2
 
-# If we get here, exec failed
-echo -e "${RED}Failed to start backend!${NC}"
-exit 1
+# STEP 3: Start frontend (this runs in foreground so Replit can manage it)
+echo -e "${GREEN}Starting frontend on port 5000...${NC}"
+cd frontend && npm run dev
