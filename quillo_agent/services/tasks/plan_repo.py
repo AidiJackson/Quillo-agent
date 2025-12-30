@@ -2,6 +2,7 @@
 Task Plan Repository (v2 Phase 1)
 """
 from typing import Optional, List, Dict
+from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -94,4 +95,40 @@ class TaskPlanRepository:
             plan.status = status
             db.commit()
             db.refresh(plan)
+        return plan
+
+    @staticmethod
+    def approve_by_task_id(
+        db: Session,
+        task_intent_id: str
+    ) -> Optional[TaskPlan]:
+        """
+        Approve a plan by task intent ID.
+
+        Sets status=approved and approved_at=now.
+        Idempotent: if already approved, returns unchanged.
+
+        Args:
+            db: Database session
+            task_intent_id: FK to task_intents.id
+
+        Returns:
+            Approved TaskPlan if found, None otherwise
+        """
+        plan = db.query(TaskPlan).filter(
+            TaskPlan.task_intent_id == task_intent_id
+        ).first()
+
+        if not plan:
+            return None
+
+        # Idempotent: if already approved, return as-is
+        if plan.status == TaskPlanStatus.APPROVED:
+            return plan
+
+        # Set status and approved_at
+        plan.status = TaskPlanStatus.APPROVED
+        plan.approved_at = datetime.utcnow()
+        db.commit()
+        db.refresh(plan)
         return plan

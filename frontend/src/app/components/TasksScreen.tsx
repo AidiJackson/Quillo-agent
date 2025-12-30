@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { fetchTaskIntents, TaskIntentOut, TaskPlanOut, createTaskPlan, fetchTaskPlan } from '../../lib/quilloApi';
-import { CheckCircle2, Circle, XCircle, RefreshCw, Loader2, ChevronDown, ChevronRight, List, FileText } from 'lucide-react';
+import { fetchTaskIntents, TaskIntentOut, TaskPlanOut, createTaskPlan, fetchTaskPlan, approveTaskPlan } from '../../lib/quilloApi';
+import { CheckCircle2, Circle, XCircle, RefreshCw, Loader2, ChevronDown, ChevronRight, List, FileText, Check } from 'lucide-react';
 
 /**
  * TasksScreen - Read-only view of Task Intents (v1)
@@ -17,6 +17,7 @@ export function TasksScreen() {
   const [expandedPlans, setExpandedPlans] = useState<Set<string>>(new Set());
   const [plans, setPlans] = useState<Record<string, TaskPlanOut>>({});
   const [generatingPlan, setGeneratingPlan] = useState<string | null>(null);
+  const [approvingPlan, setApprovingPlan] = useState<string | null>(null);
 
   const loadTasks = async (showRefreshing = false) => {
     try {
@@ -128,6 +129,18 @@ export function TasksScreen() {
       console.error('Failed to generate plan:', err);
     } finally {
       setGeneratingPlan(null);
+    }
+  };
+
+  const handleApprovePlan = async (taskId: string) => {
+    try {
+      setApprovingPlan(taskId);
+      const approvedPlan = await approveTaskPlan(taskId);
+      setPlans(prev => ({ ...prev, [taskId]: approvedPlan }));
+    } catch (err) {
+      console.error('Failed to approve plan:', err);
+    } finally {
+      setApprovingPlan(null);
     }
   };
 
@@ -339,6 +352,36 @@ export function TasksScreen() {
                               ))}
                             </ol>
                           </div>
+
+                          {/* Approval section */}
+                          {plans[task.id].status === 'draft' && (
+                            <button
+                              onClick={() => handleApprovePlan(task.id)}
+                              disabled={approvingPlan === task.id}
+                              className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 text-xs font-medium"
+                            >
+                              {approvingPlan === task.id ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Approving...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Approve plan</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+
+                          {plans[task.id].status === 'approved' && plans[task.id].approved_at && (
+                            <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-800">
+                              <p className="text-green-700 dark:text-green-400 text-xs">
+                                <Check className="w-3 h-3 inline mr-1" />
+                                Approved {new Date(plans[task.id].approved_at!).toLocaleString()}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </>

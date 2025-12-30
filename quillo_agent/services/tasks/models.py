@@ -73,3 +73,4 @@ class TaskPlan(Base):
     plan_steps = Column(JSON, nullable=False)  # list[dict] - each step has: step_num, description, tool_name?, args?
     summary = Column(Text, nullable=True)  # Brief summary of what the plan will do
     status = Column(Enum(TaskPlanStatus), default=TaskPlanStatus.DRAFT, nullable=False)
+    approved_at = Column(DateTime, nullable=True)  # Timestamp when plan was approved (v2 Phase 2)
