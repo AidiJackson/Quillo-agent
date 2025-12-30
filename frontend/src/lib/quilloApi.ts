@@ -669,6 +669,77 @@ export async function approveTaskPlan(taskId: string): Promise<TaskPlanOut> {
 }
 
 /**
+ * Task Plan Step State types (v3.1)
+ */
+
+export interface TaskStepOut {
+  step_num: number;
+  description: string;
+  status: 'pending' | 'completed';
+  completed_at: string | null;
+}
+
+export interface TaskStepsOut {
+  task_id: string;
+  steps: TaskStepOut[];
+}
+
+/**
+ * Fetch step state for a task plan (v3.1)
+ * Returns steps with status and completion timestamps
+ */
+export async function fetchTaskSteps(taskId: string): Promise<TaskStepsOut> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/steps`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Steps fetch failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Mark a step as completed (v3.1)
+ * Requires plan to be approved. Idempotent operation.
+ */
+export async function completeTaskStep(
+  taskId: string,
+  stepNum: number
+): Promise<TaskStepOut> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/steps/${stepNum}/complete`, {
+    method: 'POST',
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Step completion failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
  * User Preferences Module v1 - types and API
  */
 
