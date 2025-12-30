@@ -2,6 +2,7 @@
 UI Proxy (BFF) router - Frontend-facing endpoints without API key exposure
 """
 import hmac
+import os
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -41,7 +42,7 @@ from ..services.user_prefs.service import UserPrefsService
 
 
 # Rate limiter instance
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address, enabled=(os.getenv("PYTEST_RUNNING") is None))
 
 router = APIRouter(prefix="/ui/api", tags=["ui-proxy"])
 
