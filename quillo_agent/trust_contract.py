@@ -7,12 +7,138 @@ This module implements the trust-first judgment system behavior:
 3. Structured outputs: Evidence + Interpretation + Recommendation
 4. Preserve meaningful disagreement in multi-model synthesis
 5. Clear limitations when Evidence unavailable
+6. STRESS TEST v1: Automatic consequence-detected mode with lens assignments
 
 Pure, testable functions for trust contract enforcement.
 """
 from typing import List, Tuple, Dict, Any, Optional
 import re
 from datetime import datetime
+
+
+# ============================================================================
+# STRESS TEST v1 - CONSEQUENCE DETECTION
+# ============================================================================
+
+def detect_consequence(text: str) -> bool:
+    """
+    Detect if a prompt implies consequence, decision-making, or irreversible action.
+
+    STRESS TEST v1: When consequence is detected, Uorin automatically switches to
+    Stress Test posture with lens assignments, stricter synthesis, and execution tool
+    recommendations.
+
+    Returns True if prompt contains:
+    - Action verbs: "should I", "do I", "send this", "fire", "hire", "launch"
+    - Decision framing: "best move", "what should I do", "is it worth", "second opinion"
+    - Risk framing: "risky", "consequences", "fallout", "legal", "relationship impact"
+    - Irreversible actions: "terminate", "publish", "announce", "resign", "sue"
+
+    Args:
+        text: User prompt text
+
+    Returns:
+        True if consequence/decision detected, False for casual chat
+    """
+    if not text or not text.strip():
+        return False
+
+    text_lower = text.lower()
+
+    # Exclude instructional patterns (not decisional)
+    instructional_patterns = [
+        r'\bhow\s+(do|can)\s+(i|we)\b',  # "how do I", "how can I" - asking for instructions
+    ]
+    for pattern in instructional_patterns:
+        if re.search(pattern, text_lower):
+            return False  # Instructional, not consequential
+
+    # Action verbs implying decision/consequence
+    # Use word boundaries for short verbs that could be substrings
+    action_verbs = [
+        "should i", "do i", "can i", "shall i",
+        "send this", "send it", "reply with",
+        "fire", "hire", "promote", "demote",
+        "launch", "release", "deploy",
+        "terminate", "cancel",
+        "approve", "reject", "accept", "decline",
+        "commit to", "agree to",
+        "escalate", "report", "complain",
+        "sue", "litigate",
+        "resign", "quit", "leave",
+        "invest", "purchase", "sell",
+        "delete", "remove", "block"
+    ]
+
+    # Short verbs that need word boundaries to avoid substring matches
+    word_boundary_verbs = ["end", "sign", "file"]
+
+    # Decision framing patterns
+    decision_patterns = [
+        "best move", "right move", "what should i",
+        "is it worth", "worth it", "good idea",
+        "second opinion", "your take", "your view",
+        "what would you do", "how should i",
+        "should we", "do we", "ought to",
+        "go ahead", "proceed with", "move forward"
+    ]
+
+    # Risk and consequence framing
+    risk_indicators = [
+        "risky", "risk", "consequences", "fallout",
+        "legal", "liability", "lawsuit",
+        "relationship", "relationship impact",
+        "damage", "harm", "hurt",
+        "irreversible", "permanent", "final",
+        "reputation", "credibility",
+        "career", "job security",
+        "compliance", "violation"
+    ]
+
+    # Irreversible action verbs
+    irreversible_actions = [
+        "terminate", "fire", "dismiss",
+        "publish", "announce", "disclose",
+        "resign", "quit",
+        "delete permanently", "destroy",
+        "sue", "file lawsuit"
+    ]
+
+    # Check action verbs (substring match for multi-word phrases)
+    for verb in action_verbs:
+        if verb in text_lower:
+            return True
+
+    # Check word-boundary verbs (avoid substring matches like "trends" containing "end")
+    for verb in word_boundary_verbs:
+        if re.search(rf'\b{verb}\b', text_lower):
+            return True
+
+    # Check other indicator categories
+    other_indicators = (
+        decision_patterns +
+        risk_indicators +
+        irreversible_actions
+    )
+
+    for indicator in other_indicators:
+        if indicator in text_lower:
+            return True
+
+    # Check for question patterns about decisions
+    decision_question_patterns = [
+        r'\bshould\s+(i|we)\b',
+        r'\bdo\s+(i|we)\b.*\?',
+        r'\bis\s+it\s+(worth|safe|risky|wise)\b',
+        r'\bwhat.*best\b',
+        r'\bsecond\s+opinion\b'
+    ]
+
+    for pattern in decision_question_patterns:
+        if re.search(pattern, text_lower):
+            return True
+
+    return False
 
 
 # ============================================================================
@@ -402,3 +528,156 @@ def parse_unstructured_output(raw_text: str, model_name: str) -> Dict[str, Any]:
         recommendation=recommendation,
         raw_response=raw_text
     )
+
+
+# ============================================================================
+# STRESS TEST v1 - LENS ASSIGNMENTS
+# ============================================================================
+
+# Lens definitions (deterministic assignments)
+STRESS_TEST_LENSES = {
+    "claude": {
+        "name": "Risk Lens",
+        "focus": "Failure modes, downside scenarios, legal/commercial risk",
+        "instruction": """You are analyzing this decision through the RISK LENS.
+
+Focus on:
+- What could go wrong (failure modes)
+- Downside scenarios and worst-case outcomes
+- Legal, commercial, and compliance risks
+- Hidden costs and unintended consequences
+- What is irreversible or hard to undo
+
+Be specific about risks, not just cautious."""
+    },
+    "deepseek": {
+        "name": "Relationship Lens",
+        "focus": "How this lands emotionally, politically, interpersonally",
+        "instruction": """You are analyzing this decision through the RELATIONSHIP LENS.
+
+Focus on:
+- How this will land emotionally with people involved
+- Political dynamics and power relationships
+- Trust and credibility implications
+- Short-term vs long-term relationship impact
+- How stakeholders will interpret this action
+
+Be specific about relationship dynamics, not just empathy."""
+    },
+    "gemini": {
+        "name": "Strategy Lens",
+        "focus": "Leverage, timing, alternatives, positioning",
+        "instruction": """You are analyzing this decision through the STRATEGY LENS.
+
+Focus on:
+- Leverage and positioning opportunities
+- Timing considerations (why now? why not wait?)
+- Alternative approaches and options
+- Competitive or strategic advantages
+- What information/conditions would change your view
+
+Be specific about strategic trade-offs, not just systematic thinking."""
+    }
+}
+
+# Execution lens for synthesis
+SYNTHESIS_EXECUTION_LENS = {
+    "name": "Execution Lens",
+    "focus": "Clarity, reversibility, cost of action vs. inaction",
+    "instruction": """You are synthesizing through the EXECUTION LENS.
+
+Focus on:
+- Clarity: Is the recommended action clear and actionable?
+- Reversibility: Can we undo this if needed?
+- Cost of action vs. cost of inaction
+- What needs to happen first (prerequisites)
+- How to measure if this was the right call
+
+Recommend a concrete execution tool: Response / Rewrite / Argue / Clarity"""
+}
+
+
+def get_lens_for_agent(agent_name: str) -> Optional[Dict[str, str]]:
+    """
+    Get the Stress Test lens assignment for an agent.
+
+    Args:
+        agent_name: Name of agent ("claude", "deepseek", "gemini")
+
+    Returns:
+        Lens dict with name, focus, instruction, or None if not assigned
+    """
+    return STRESS_TEST_LENSES.get(agent_name)
+
+
+def format_stress_test_synthesis(
+    decision_being_tested: str,
+    top_risks: List[str],
+    disagreements: List[Dict[str, str]],
+    best_move: str,
+    safer_alternative: str,
+    bolder_alternative: str,
+    execution_tool: str,
+    evidence_used: bool,
+    evidence_sources: Optional[List[Dict[str, str]]] = None
+) -> Dict[str, Any]:
+    """
+    Format Stress Test synthesis with required structure.
+
+    Stress Test synthesis structure (enforced):
+    - Decision being stress-tested
+    - Top risks (ranked)
+    - Meaningful disagreements (attributed)
+    - Best next move
+    - Two alternatives (safer/bolder)
+    - Suggested execution tool
+    - Evidence used
+
+    Args:
+        decision_being_tested: One sentence summary of decision
+        top_risks: List of top risks (ranked)
+        disagreements: List of {agent, lens, point} disagreements
+        best_move: Primary recommendation
+        safer_alternative: Safer option
+        bolder_alternative: Bolder option
+        execution_tool: Response/Rewrite/Argue/Clarity
+        evidence_used: Whether evidence was fetched
+        evidence_sources: Optional evidence sources
+
+    Returns:
+        Structured synthesis dict for Stress Test mode
+    """
+    return {
+        "mode": "stress_test",
+        "decision_being_tested": decision_being_tested,
+        "top_risks": top_risks,  # Ranked list
+        "disagreements": disagreements,  # [] if consensus
+        "best_move": best_move,
+        "alternatives": {
+            "safer": safer_alternative,
+            "bolder": bolder_alternative
+        },
+        "execution_tool": execution_tool,
+        "evidence": {
+            "used": evidence_used,
+            "sources": evidence_sources or [],
+            "note": "No Evidence fetched" if not evidence_used else None
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+def is_valid_execution_tool(tool: str) -> bool:
+    """
+    Validate execution tool recommendation.
+
+    Valid tools: Response, Rewrite, Argue, Clarity
+
+    Args:
+        tool: Tool name
+
+    Returns:
+        True if valid execution tool
+    """
+    valid_tools = ["Response", "Rewrite", "Argue", "Clarity"]
+    return tool in valid_tools
