@@ -26,22 +26,38 @@ GEMINI_MODEL = settings.openrouter_gemini_agent_model
 PRIMARY_MODEL = settings.openrouter_chat_model  # GPT-4o-mini (or GPT-4o)
 
 
-def _get_agent_prompt(agent_name: str, mode: str = "raw") -> str:
+def _get_agent_prompt(agent_name: str, mode: str = "raw", stress_test_mode: bool = False) -> str:
     """
-    Get system prompt for an agent based on the prompt mode with TRUST CONTRACT enforcement.
+    Get system prompt for an agent with TRUST CONTRACT + STRESS TEST v1 enforcement.
 
     TRUST CONTRACT requirements (all modes):
     - Structured output: Evidence / Interpretation / Recommendation
     - Use Evidence provided if available
     - State limitations clearly when Evidence unavailable
 
+    STRESS TEST v1 (when stress_test_mode=True):
+    - Assigns specific lens to each agent (Risk, Relationship, Strategy)
+    - Enforces lens focus in system prompt
+    - Synthesis gets Execution lens
+
     Args:
         agent_name: Name of agent ("claude", "deepseek", "gemini", "primary_frame", "primary_synth")
         mode: Prompt mode ("raw" or "tuned")
+        stress_test_mode: Whether to activate STRESS TEST v1 lens assignments
 
     Returns:
-        System prompt string with TRUST CONTRACT enforcement
+        System prompt string with TRUST CONTRACT + optional STRESS TEST enforcement
     """
+    # Import lens definitions
+    from ..trust_contract import get_lens_for_agent, SYNTHESIS_EXECUTION_LENS
+
+    # STRESS TEST v1: Check if lens assignment needed
+    lens = None
+    if stress_test_mode and agent_name in ["claude", "deepseek", "gemini"]:
+        lens = get_lens_for_agent(agent_name)
+    elif stress_test_mode and agent_name == "primary_synth":
+        lens = SYNTHESIS_EXECUTION_LENS
+
     # TRUST CONTRACT structured output format (enforced across all modes)
     structured_format = """
 REQUIRED OUTPUT FORMAT:
@@ -52,10 +68,22 @@ REQUIRED OUTPUT FORMAT:
     # Raw mode: minimal constraints, model speaks naturally
     # But now with TRUST CONTRACT structured output enforcement
     if mode == "raw":
+        # Build prompts based on whether lens is assigned (STRESS TEST mode)
+        lens_instruction = lens['instruction'] if lens else ''
+
+        claude_intro = "Analyze through the RISK LENS." if lens else "Provide your perspective on the user's question."
+        deepseek_intro = "Analyze through the RELATIONSHIP LENS." if lens else "Question assumptions and offer contrarian views."
+        deepseek_focus = "Focus on relationship dynamics" if lens else "Challenge conventional thinking while staying evidence-based"
+        gemini_intro = "Analyze through the STRATEGY LENS." if lens else "Provide structured, systematic analysis."
+        gemini_focus = "Focus on strategic trade-offs and timing" if lens else "Offer methodical, step-by-step perspective"
+        synth_intro = "Synthesize through the EXECUTION LENS." if lens else "Synthesize the peer perspectives into a clear recommendation."
+
         raw_prompts = {
             "primary_frame": """You are Quillo. Reply naturally in your own style.
 Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
-            "claude": f"""You are Claude. Provide your perspective on the user's question.
+            "claude": f"""You are Claude. {claude_intro}
+
+{lens_instruction}
 
 TRUST CONTRACT (NON-NEGOTIABLE):
 - If Evidence is provided above, use ONLY those facts for factual claims
@@ -65,27 +93,33 @@ TRUST CONTRACT (NON-NEGOTIABLE):
 {structured_format}
 
 Do not reveal chain-of-thought. Do not describe tool usage.""",
-            "deepseek": f"""You are DeepSeek, the challenger perspective. Question assumptions and offer contrarian views.
+            "deepseek": f"""You are DeepSeek. {deepseek_intro}
+
+{lens_instruction}
 
 TRUST CONTRACT (NON-NEGOTIABLE):
 - If Evidence is provided above, use ONLY those facts for factual claims
 - If no Evidence provided, do NOT make up facts - state uncertainty clearly
-- Challenge conventional thinking while staying evidence-based
+- {deepseek_focus}
 
 {structured_format}
 
 Do not reveal chain-of-thought. Do not describe tool usage.""",
-            "gemini": f"""You are Gemini. Provide structured, systematic analysis.
+            "gemini": f"""You are Gemini. {gemini_intro}
+
+{lens_instruction}
 
 TRUST CONTRACT (NON-NEGOTIABLE):
 - If Evidence is provided above, use ONLY those facts for factual claims
 - If no Evidence provided, do NOT make up facts - state uncertainty clearly
-- Offer methodical, step-by-step perspective
+- {gemini_focus}
 
 {structured_format}
 
 Do not reveal chain-of-thought. Do not describe tool usage.""",
-            "primary_synth": f"""You are Quillo. Synthesize the peer perspectives into a clear recommendation.
+            "primary_synth": f"""You are Quillo. {synth_intro}
+
+{lens_instruction}
 
 TRUST CONTRACT (NON-NEGOTIABLE):
 - Preserve meaningful disagreements between agents (do NOT force false consensus)
@@ -94,9 +128,11 @@ TRUST CONTRACT (NON-NEGOTIABLE):
 
 SYNTHESIS FORMAT:
 **Decision Framing:** [One sentence summary]
+{'**Top Risks:** [Ranked list from Risk lens analysis]' if lens else ''}
 **Key Disagreements:** [List if any, attributed to agents; write "None - agents aligned" if consensus]
 **Best Move:** [Primary recommendation]
 **Alternatives:** [2 options: safer and bolder approaches]
+{'**Execution Tool:** [Response/Rewrite/Argue/Clarity - which tool to use]' if lens else ''}
 **Evidence Note:** [State if Evidence was used or unavailable]
 
 Do not reveal chain-of-thought. Do not describe tool usage."""
@@ -105,10 +141,10 @@ Do not reveal chain-of-thought. Do not describe tool usage."""
 
     # Tuned mode: Same as raw for now (trust contract applies to all modes)
     elif mode == "tuned":
-        return _get_agent_prompt(agent_name, mode="raw")
+        return _get_agent_prompt(agent_name, mode="raw", stress_test_mode=stress_test_mode)
 
     # Default to raw
-    return _get_agent_prompt(agent_name, mode="raw")
+    return _get_agent_prompt(agent_name, mode="raw", stress_test_mode=stress_test_mode)
 
 
 async def run_multi_agent_chat(
@@ -116,7 +152,8 @@ async def run_multi_agent_chat(
     user_id: Optional[str] = None,
     agents: Optional[list[str]] = None,
     trace_id: Optional[str] = None,
-    evidence_context: Optional[str] = None
+    evidence_context: Optional[str] = None,
+    stress_test_mode: bool = False
 ) -> tuple[list[dict], str, Optional[str], bool]:
     """
     Run a multi-agent chat conversation with TRUST CONTRACT v1 enforcement.
@@ -151,7 +188,7 @@ async def run_multi_agent_chat(
 
     # Use OpenRouter to generate real conversation
     try:
-        messages = await _generate_openrouter_transcript(text, evidence_context)
+        messages = await _generate_openrouter_transcript(text, evidence_context, stress_test_mode)
         # Determine if all peers failed
         live_peer_count = sum(1 for m in messages if m.get("agent") in ["claude", "deepseek", "gemini"] and m.get("live", True))
         peers_unavailable = (live_peer_count == 0)
@@ -234,7 +271,11 @@ def _generate_template_transcript(text: str) -> list[dict]:
     ]
 
 
-async def _generate_openrouter_transcript(text: str, evidence_context: Optional[str] = None) -> list[dict]:
+async def _generate_openrouter_transcript(
+    text: str,
+    evidence_context: Optional[str] = None,
+    stress_test_mode: bool = False
+) -> list[dict]:
     """
     Generate multi-agent conversation with partial-live support and TRUST CONTRACT enforcement.
 
@@ -278,7 +319,7 @@ async def _generate_openrouter_transcript(text: str, evidence_context: Optional[
     # Message 2: Claude perspective (safe call)
     claude_content, claude_reason = await _call_openrouter_safe(
         model=CLAUDE_MODEL,
-        system_prompt=_get_agent_prompt("claude", mode=prompt_mode),
+        system_prompt=_get_agent_prompt("claude", mode=prompt_mode, stress_test_mode=stress_test_mode),
         user_message=user_message,
         agent_name="claude",
         trace_id=trace_id
@@ -306,7 +347,7 @@ async def _generate_openrouter_transcript(text: str, evidence_context: Optional[
     # Message 3: DeepSeek perspective (safe call)
     deepseek_content, deepseek_reason = await _call_openrouter_safe(
         model=CHALLENGER_MODEL,
-        system_prompt=_get_agent_prompt("deepseek", mode=prompt_mode),
+        system_prompt=_get_agent_prompt("deepseek", mode=prompt_mode, stress_test_mode=stress_test_mode),
         user_message=user_message,
         agent_name="deepseek",
         trace_id=trace_id
@@ -334,7 +375,7 @@ async def _generate_openrouter_transcript(text: str, evidence_context: Optional[
     # Message 4: Gemini perspective (safe call)
     gemini_content, gemini_reason = await _call_openrouter_safe(
         model=GEMINI_MODEL,
-        system_prompt=_get_agent_prompt("gemini", mode=prompt_mode),
+        system_prompt=_get_agent_prompt("gemini", mode=prompt_mode, stress_test_mode=stress_test_mode),
         user_message=user_message,
         agent_name="gemini",
         trace_id=trace_id
@@ -363,7 +404,7 @@ async def _generate_openrouter_transcript(text: str, evidence_context: Optional[
     synth_prompt = _build_synthesis_prompt(text, peer_responses)
     synth_content, synth_reason = await _call_openrouter_safe(
         model=PRIMARY_MODEL,
-        system_prompt=_get_agent_prompt("primary_synth", mode=prompt_mode),
+        system_prompt=_get_agent_prompt("primary_synth", mode=prompt_mode, stress_test_mode=stress_test_mode),
         user_message=synth_prompt,
         agent_name="quillo",
         trace_id=trace_id

@@ -44,7 +44,8 @@ from ..trust_contract import (
     enforce_no_assumptions,
     format_model_output,
     format_synthesis,
-    extract_disagreements
+    extract_disagreements,
+    detect_consequence
 )
 
 
@@ -696,7 +697,7 @@ async def ui_multi_agent_chat(
     token: str = Depends(verify_ui_token)
 ) -> MultiAgentResponse:
     """
-    UI proxy for multi-agent chat with TRUST CONTRACT v1 enforcement.
+    UI proxy for multi-agent chat with TRUST CONTRACT v1 + STRESS TEST v1 enforcement.
 
     TRUST CONTRACT BEHAVIORS:
     1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
@@ -704,6 +705,11 @@ async def ui_multi_agent_chat(
     3. Structured outputs: Each agent provides Evidence/Interpretation/Recommendation
     4. Meaningful disagreements: Synthesis preserves substantive differences
     5. Evidence limitations: States clearly when evidence unavailable
+
+    STRESS TEST v1 BEHAVIORS (automatic when consequence detected):
+    6. Consequence detection: Auto-detects decision-making/high-stakes prompts
+    7. Lens assignments: Risk/Relationship/Strategy/Execution lenses
+    8. Stricter synthesis: Top risks, disagreements, alternatives, execution tool
 
     Rate limited to 30 requests per minute per IP.
 
@@ -716,7 +722,7 @@ async def ui_multi_agent_chat(
         MultiAgentResponse with messages, provider, trace_id
     """
     import uuid
-    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, trust_contract=v1")
+    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, trust_contract=v1, stress_test=v1")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
@@ -777,13 +783,21 @@ async def ui_multi_agent_chat(
             evidence_context = "Evidence temporarily unavailable. Responses may have limited factual certainty."
             logger.error(f"[{trace_id}] Evidence fetch error in multi-agent: {e}")
 
-    # Run multi-agent chat with evidence context
+    # STRESS TEST v1: Check if consequence/decision detected
+    stress_test_mode = detect_consequence(payload.text)
+    if stress_test_mode:
+        logger.info(f"[{trace_id}] STRESS TEST v1 activated - consequence detected")
+    else:
+        logger.info(f"[{trace_id}] Normal multi-agent mode - no consequence detected")
+
+    # Run multi-agent chat with evidence context and stress test mode
     messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
         text=payload.text,
         user_id=payload.user_id,
         agents=payload.agents,
         trace_id=trace_id,
-        evidence_context=evidence_context  # Pass evidence to multi-agent
+        evidence_context=evidence_context,  # Pass evidence to multi-agent
+        stress_test_mode=stress_test_mode  # Pass stress test flag
     )
 
     # Convert to MultiAgentMessage models
