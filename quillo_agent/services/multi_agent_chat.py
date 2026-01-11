@@ -28,37 +28,83 @@ PRIMARY_MODEL = settings.openrouter_chat_model  # GPT-4o-mini (or GPT-4o)
 
 def _get_agent_prompt(agent_name: str, mode: str = "raw") -> str:
     """
-    Get system prompt for an agent based on the prompt mode.
+    Get system prompt for an agent based on the prompt mode with TRUST CONTRACT enforcement.
+
+    TRUST CONTRACT requirements (all modes):
+    - Structured output: Evidence / Interpretation / Recommendation
+    - Use Evidence provided if available
+    - State limitations clearly when Evidence unavailable
 
     Args:
         agent_name: Name of agent ("claude", "deepseek", "gemini", "primary_frame", "primary_synth")
         mode: Prompt mode ("raw" or "tuned")
 
     Returns:
-        System prompt string
+        System prompt string with TRUST CONTRACT enforcement
     """
+    # TRUST CONTRACT structured output format (enforced across all modes)
+    structured_format = """
+REQUIRED OUTPUT FORMAT:
+**Evidence:** [List facts from provided Evidence sources, or state "No Evidence provided"]
+**Interpretation:** [Your analysis, trade-offs, risks, considerations]
+**Recommendation:** [Clear next steps with rationale]"""
+
     # Raw mode: minimal constraints, model speaks naturally
-    # Still prevents chain-of-thought and tool narration
+    # But now with TRUST CONTRACT structured output enforcement
     if mode == "raw":
         raw_prompts = {
             "primary_frame": """You are Quillo. Reply naturally in your own style.
 Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
-            "claude": """You are Claude. Reply naturally in your own style.
-Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
-            "deepseek": """You are DeepSeek. Reply naturally in your own style.
-Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
-            "gemini": """You are Gemini. Reply naturally in your own style.
-Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical.""",
-            "primary_synth": """You are Quillo. Reply naturally in your own style.
-Do not reveal chain-of-thought. Do not describe tool usage. Be concise and practical."""
+            "claude": f"""You are Claude. Provide your perspective on the user's question.
+
+TRUST CONTRACT (NON-NEGOTIABLE):
+- If Evidence is provided above, use ONLY those facts for factual claims
+- If no Evidence provided, do NOT make up facts - state uncertainty clearly
+- Structure your response clearly
+
+{structured_format}
+
+Do not reveal chain-of-thought. Do not describe tool usage.""",
+            "deepseek": f"""You are DeepSeek, the challenger perspective. Question assumptions and offer contrarian views.
+
+TRUST CONTRACT (NON-NEGOTIABLE):
+- If Evidence is provided above, use ONLY those facts for factual claims
+- If no Evidence provided, do NOT make up facts - state uncertainty clearly
+- Challenge conventional thinking while staying evidence-based
+
+{structured_format}
+
+Do not reveal chain-of-thought. Do not describe tool usage.""",
+            "gemini": f"""You are Gemini. Provide structured, systematic analysis.
+
+TRUST CONTRACT (NON-NEGOTIABLE):
+- If Evidence is provided above, use ONLY those facts for factual claims
+- If no Evidence provided, do NOT make up facts - state uncertainty clearly
+- Offer methodical, step-by-step perspective
+
+{structured_format}
+
+Do not reveal chain-of-thought. Do not describe tool usage.""",
+            "primary_synth": f"""You are Quillo. Synthesize the peer perspectives into a clear recommendation.
+
+TRUST CONTRACT (NON-NEGOTIABLE):
+- Preserve meaningful disagreements between agents (do NOT force false consensus)
+- If agents disagree substantially, acknowledge both viewpoints
+- Structure synthesis clearly
+
+SYNTHESIS FORMAT:
+**Decision Framing:** [One sentence summary]
+**Key Disagreements:** [List if any, attributed to agents; write "None - agents aligned" if consensus]
+**Best Move:** [Primary recommendation]
+**Alternatives:** [2 options: safer and bolder approaches]
+**Evidence Note:** [State if Evidence was used or unavailable]
+
+Do not reveal chain-of-thought. Do not describe tool usage."""
         }
         return raw_prompts.get(agent_name, raw_prompts["claude"])
 
-    # Tuned mode: placeholder for future specialist prompts
-    # For now, identical to raw (will add specialists later)
-    # TODO: Load agent prompts from specialist configuration
+    # Tuned mode: Same as raw for now (trust contract applies to all modes)
     elif mode == "tuned":
-        # Placeholder: same as raw for now
         return _get_agent_prompt(agent_name, mode="raw")
 
     # Default to raw
@@ -69,16 +115,23 @@ async def run_multi_agent_chat(
     text: str,
     user_id: Optional[str] = None,
     agents: Optional[list[str]] = None,
-    trace_id: Optional[str] = None
+    trace_id: Optional[str] = None,
+    evidence_context: Optional[str] = None
 ) -> tuple[list[dict], str, Optional[str], bool]:
     """
-    Run a multi-agent chat conversation.
+    Run a multi-agent chat conversation with TRUST CONTRACT v1 enforcement.
+
+    TRUST CONTRACT behaviors:
+    - Evidence context injected into agent prompts if provided
+    - Structured outputs enforced: Evidence/Interpretation/Recommendation
+    - Synthesis preserves meaningful disagreements
 
     Args:
         text: User's input text
         user_id: Optional user identifier
         agents: List of agent names (default: ["primary", "claude", "deepseek"])
         trace_id: Optional trace ID for logging
+        evidence_context: Optional evidence block to inject into prompts
 
     Returns:
         Tuple of (messages, provider, fallback_reason, peers_unavailable)
@@ -88,7 +141,7 @@ async def run_multi_agent_chat(
         - peers_unavailable: True if Quillo succeeded but all peer agents failed
     """
     agents = agents or ["primary", "claude", "deepseek"]
-    logger.info(f"Multi-agent chat: user_id={user_id}, agents={agents}, trace_id={trace_id}")
+    logger.info(f"Multi-agent chat: user_id={user_id}, agents={agents}, trace_id={trace_id}, has_evidence={bool(evidence_context)}")
 
     # Check if OpenRouter is available
     if not settings.openrouter_api_key:
@@ -98,7 +151,7 @@ async def run_multi_agent_chat(
 
     # Use OpenRouter to generate real conversation
     try:
-        messages = await _generate_openrouter_transcript(text)
+        messages = await _generate_openrouter_transcript(text, evidence_context)
         # Determine if all peers failed
         live_peer_count = sum(1 for m in messages if m.get("agent") in ["claude", "deepseek", "gemini"] and m.get("live", True))
         peers_unavailable = (live_peer_count == 0)
@@ -181,17 +234,22 @@ def _generate_template_transcript(text: str) -> list[dict]:
     ]
 
 
-async def _generate_openrouter_transcript(text: str) -> list[dict]:
+async def _generate_openrouter_transcript(text: str, evidence_context: Optional[str] = None) -> list[dict]:
     """
-    Generate multi-agent conversation with partial-live support.
+    Generate multi-agent conversation with partial-live support and TRUST CONTRACT enforcement.
 
     Flow:
     1. Quillo frame (deterministic) - if this fails, exception propagates
-    2. Claude, Grok, Gemini (independent) - failures replaced with unavailable messages
+    2. Claude, DeepSeek, Gemini (independent) - failures replaced with unavailable messages
     3. Quillo synthesis (adapts to available peers) - uses available perspectives
+
+    TRUST CONTRACT:
+    - Evidence context injected into peer prompts if provided
+    - Structured output format enforced in system prompts
 
     Args:
         text: User's input text
+        evidence_context: Optional evidence block to inject
 
     Returns:
         List of message dicts with new metadata fields (model_id, live, unavailable_reason)
@@ -200,6 +258,11 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     prompt_mode = settings.multi_agent_prompt_mode
     peer_responses = {}
     trace_id = str(uuid.uuid4())
+
+    # Build user message with optional evidence context
+    user_message = text
+    if evidence_context:
+        user_message = f"{evidence_context}\n\n---\n\nUser question: {text}"
 
     # Message 1: Primary frame (deterministic, always succeeds)
     primary_frame = _generate_short_frame(text)
@@ -216,7 +279,7 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     claude_content, claude_reason = await _call_openrouter_safe(
         model=CLAUDE_MODEL,
         system_prompt=_get_agent_prompt("claude", mode=prompt_mode),
-        user_message=text,
+        user_message=user_message,
         agent_name="claude",
         trace_id=trace_id
     )
@@ -244,7 +307,7 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     deepseek_content, deepseek_reason = await _call_openrouter_safe(
         model=CHALLENGER_MODEL,
         system_prompt=_get_agent_prompt("deepseek", mode=prompt_mode),
-        user_message=text,
+        user_message=user_message,
         agent_name="deepseek",
         trace_id=trace_id
     )
@@ -272,7 +335,7 @@ async def _generate_openrouter_transcript(text: str) -> list[dict]:
     gemini_content, gemini_reason = await _call_openrouter_safe(
         model=GEMINI_MODEL,
         system_prompt=_get_agent_prompt("gemini", mode=prompt_mode),
-        user_message=text,
+        user_message=user_message,
         agent_name="gemini",
         trace_id=trace_id
     )

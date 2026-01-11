@@ -39,6 +39,13 @@ from ..services.evidence import retrieve_evidence
 from ..services.tasks.service import TaskIntentService
 from ..services.tasks.plan_service import TaskPlanService
 from ..services.user_prefs.service import UserPrefsService
+from ..trust_contract import (
+    classify_prompt_needs_evidence,
+    enforce_no_assumptions,
+    format_model_output,
+    format_synthesis,
+    extract_disagreements
+)
 
 
 # Rate limiter instance
@@ -449,9 +456,13 @@ async def ui_ask_quillopreneur(
     token: str = Depends(verify_ui_token)
 ) -> AskResponse:
     """
-    UI proxy for Quillopreneur business advice.
+    UI proxy for Quillopreneur business advice with TRUST CONTRACT v1 enforcement.
 
-    Calls underlying service directly without requiring API key.
+    TRUST CONTRACT BEHAVIORS:
+    1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
+    2. No assumptions: Asks clarifying questions if critical context is missing
+    3. Evidence limitations: States clearly when evidence unavailable
+
     Rate limited to 30 requests per minute per IP.
 
     Args:
@@ -464,20 +475,76 @@ async def ui_ask_quillopreneur(
         AskResponse with answer, model, and trace_id
     """
     import uuid
-    logger.info(f"UI POST /ask: user_id={payload.user_id}")
+    logger.info(f"UI POST /ask: user_id={payload.user_id}, trust_contract=v1")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
 
+    # TRUST CONTRACT STEP 1: Check for missing assumptions
+    # Build context dict (for future: conversation history, attachments, etc.)
+    context = {
+        "has_previous_context": False,  # TODO: Check conversation storage
+        "has_attachments": False
+    }
+
+    ok_to_proceed, questions = enforce_no_assumptions(payload.text, context)
+
+    if not ok_to_proceed and questions:
+        # Critical context missing - return questions without calling LLM
+        logger.info(f"[{trace_id}] No-assumptions triggered: {len(questions)} questions")
+        questions_text = "I need a few details before I can help (no guessing):\n\n"
+        for i, question in enumerate(questions, 1):
+            questions_text += f"{i}. {question}\n"
+
+        return AskResponse(
+            answer=questions_text.strip(),
+            model="trust-contract-v1",
+            trace_id=trace_id
+        )
+
+    # TRUST CONTRACT STEP 2: Check if evidence is needed
+    needs_evidence = classify_prompt_needs_evidence(payload.text)
+    evidence_block = None
+    evidence_note = None
+
+    if needs_evidence:
+        logger.info(f"[{trace_id}] Evidence default-on triggered for prompt")
+        try:
+            evidence_response = await retrieve_evidence(payload.text)
+            if evidence_response.ok and evidence_response.facts:
+                # Build evidence block from facts
+                evidence_lines = ["**Evidence (from web sources):**\n"]
+                for fact in evidence_response.facts:
+                    source = next((s for s in evidence_response.sources if s.id == fact.source_id), None)
+                    source_label = f"{source.domain}" if source else "Unknown"
+                    evidence_lines.append(f"- {fact.text} [{source_label}]")
+                evidence_block = "\n".join(evidence_lines)
+                logger.info(f"[{trace_id}] Evidence fetched: {len(evidence_response.facts)} facts from {len(evidence_response.sources)} sources")
+            else:
+                evidence_note = "⚠️ Evidence fetch attempted but no results found. Proceeding with limited factual certainty."
+                logger.warning(f"[{trace_id}] Evidence fetch failed or empty")
+        except Exception as e:
+            evidence_note = "⚠️ Evidence temporarily unavailable. Response may have limited factual certainty."
+            logger.error(f"[{trace_id}] Evidence fetch error: {e}")
+
     # Get business advice using the service layer
+    # Note: Passing evidence_block to the answer_business_question is a future enhancement
+    # For now, we prepend it to the response
     answer, model = await advice.answer_business_question(
         text=payload.text,
         user_id=payload.user_id,
         db=db
     )
 
+    # TRUST CONTRACT STEP 3: Format response with evidence context
+    final_answer = answer
+    if evidence_block:
+        final_answer = f"{evidence_block}\n\n{answer}"
+    elif evidence_note:
+        final_answer = f"{evidence_note}\n\n{answer}"
+
     return AskResponse(
-        answer=answer,
+        answer=final_answer,
         model=model,
         trace_id=trace_id
     )
@@ -629,15 +696,15 @@ async def ui_multi_agent_chat(
     token: str = Depends(verify_ui_token)
 ) -> MultiAgentResponse:
     """
-    UI proxy for multi-agent chat (v0).
+    UI proxy for multi-agent chat with TRUST CONTRACT v1 enforcement.
 
-    Minimal proof: 3 agents, one thread, real conversation.
-    - Primary (Quillo) frames
-    - Claude gives perspective
-    - Grok gives contrasting perspective
-    - Primary (Quillo) synthesizes
+    TRUST CONTRACT BEHAVIORS:
+    1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
+    2. No assumptions: Asks clarifying questions if critical context is missing
+    3. Structured outputs: Each agent provides Evidence/Interpretation/Recommendation
+    4. Meaningful disagreements: Synthesis preserves substantive differences
+    5. Evidence limitations: States clearly when evidence unavailable
 
-    No tools execution. No streaming. Just conversation.
     Rate limited to 30 requests per minute per IP.
 
     Args:
@@ -649,17 +716,74 @@ async def ui_multi_agent_chat(
         MultiAgentResponse with messages, provider, trace_id
     """
     import uuid
-    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, text_len={len(payload.text)}")
+    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, trust_contract=v1")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
 
-    # Run multi-agent chat
+    # TRUST CONTRACT STEP 1: Check for missing assumptions
+    context = {
+        "has_previous_context": False,
+        "has_attachments": False
+    }
+
+    ok_to_proceed, questions = enforce_no_assumptions(payload.text, context)
+
+    if not ok_to_proceed and questions:
+        # Return questions as a single message from Quillo
+        logger.info(f"[{trace_id}] No-assumptions triggered in multi-agent: {len(questions)} questions")
+        questions_text = "I need a few details before we can provide multi-agent perspectives (no guessing):\n\n"
+        for i, question in enumerate(questions, 1):
+            questions_text += f"{i}. {question}\n"
+
+        messages = [MultiAgentMessage(
+            role="assistant",
+            agent="quillo",
+            content=questions_text.strip(),
+            model_id=None,
+            live=True,
+            unavailable_reason=None
+        )]
+
+        return MultiAgentResponse(
+            messages=messages,
+            provider="trust-contract-v1",
+            trace_id=trace_id,
+            fallback_reason=None,
+            peers_unavailable=False
+        )
+
+    # TRUST CONTRACT STEP 2: Check if evidence is needed
+    needs_evidence = classify_prompt_needs_evidence(payload.text)
+    evidence_context = None
+
+    if needs_evidence:
+        logger.info(f"[{trace_id}] Evidence default-on triggered for multi-agent prompt")
+        try:
+            evidence_response = await retrieve_evidence(payload.text)
+            if evidence_response.ok and evidence_response.facts:
+                # Build evidence context for agents
+                evidence_lines = ["Evidence (from web sources):"]
+                for fact in evidence_response.facts:
+                    source = next((s for s in evidence_response.sources if s.id == fact.source_id), None)
+                    source_label = f"{source.domain}" if source else "Unknown"
+                    evidence_lines.append(f"- {fact.text} [{source_label}]")
+                evidence_context = "\n".join(evidence_lines)
+                logger.info(f"[{trace_id}] Evidence fetched for multi-agent: {len(evidence_response.facts)} facts")
+            else:
+                evidence_context = "Evidence fetch attempted but no results found. Proceed with limited factual certainty."
+                logger.warning(f"[{trace_id}] Evidence fetch failed or empty for multi-agent")
+        except Exception as e:
+            evidence_context = "Evidence temporarily unavailable. Responses may have limited factual certainty."
+            logger.error(f"[{trace_id}] Evidence fetch error in multi-agent: {e}")
+
+    # Run multi-agent chat with evidence context
     messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
         text=payload.text,
         user_id=payload.user_id,
         agents=payload.agents,
-        trace_id=trace_id
+        trace_id=trace_id,
+        evidence_context=evidence_context  # Pass evidence to multi-agent
     )
 
     # Convert to MultiAgentMessage models

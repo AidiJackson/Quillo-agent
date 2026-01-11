@@ -46,7 +46,14 @@ class Settings(BaseSettings):
     # Security settings
     quillo_api_key: str = ""
     quillo_ui_token: str = ""  # UI-facing token for frontend proxy (dev-safe)
+    uorin_session_secret: str = ""  # Session cookie signing secret (REQUIRED for production)
     cors_allowed_origins: str = ""
+
+    # Rate limiting settings (requests per time period)
+    rate_limit_default: str = "60/minute"  # Default for most endpoints
+    rate_limit_llm: str = "10/minute"  # LLM-heavy endpoints (ask, multi-agent)
+    rate_limit_evidence: str = "5/minute"  # Evidence retrieval (web scraping)
+    rate_limit_tasks: str = "20/minute"  # Task operations
 
     @property
     def cors_origins_list(self) -> list:
