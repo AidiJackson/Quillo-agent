@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     openrouter_challenger_agent_model: str = "deepseek/deepseek-chat"  # DeepSeek V3 (challenger perspective)
     openrouter_gemini_agent_model: str = "google/gemini-2.5-flash"
 
+    # Research/Evidence extraction model (dedicated for cost optimization)
+    openrouter_research_model: str = "google/gemini-2.5-flash"  # 70% cheaper than Haiku for extraction tasks
+
     # Anthropic LLM provider (direct)
     anthropic_api_key: str = ""
 

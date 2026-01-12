@@ -190,8 +190,9 @@ Search Results:
 Extract 6-10 neutral facts from these results. Follow the format strictly."""
 
     try:
-        # Call LLM for fact extraction using OpenRouter
-        model = llm_router._get_openrouter_model(tier="fast")
+        # Call LLM for fact extraction using dedicated research model (with fallback)
+        # Use dedicated research model if configured, otherwise fall back to fast tier
+        model = settings.openrouter_research_model if settings.openrouter_research_model else llm_router._get_openrouter_model(tier="fast")
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}

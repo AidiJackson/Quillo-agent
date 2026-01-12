@@ -5,6 +5,32 @@
 **Auditor:** Claude Sonnet 4.5
 **Date:** January 12, 2026
 
+**Implementation Branch:** feature/research-model-config-2026-01-12
+**Implementation Date:** January 12, 2026
+
+---
+
+## Update: Dedicated Research Model Config Implemented ✅
+
+**Date:** January 12, 2026
+**Status:** Implemented and tested
+
+The recommended first step has been completed:
+- ✅ Added `openrouter_research_model` config variable
+- ✅ Default: `google/gemini-2.5-flash` (70% cost savings)
+- ✅ Fallback: Falls back to `tier="fast"` model if not configured
+- ✅ Updated `.env.example` with new config
+- ✅ Evidence extraction now uses dedicated research model
+- ✅ Tests added to verify model selection and fallback behavior
+
+**Files Modified:**
+- `quillo_agent/config.py` - Added research model config (line 35)
+- `quillo_agent/services/evidence.py` - Updated model selection (line 194)
+- `.env.example` - Added OPENROUTER_RESEARCH_MODEL
+- `tests/test_evidence.py` - Added model selection tests
+
+**Environment Variable:** `OPENROUTER_RESEARCH_MODEL=google/gemini-2.5-flash`
+
 ---
 
 ## Executive Summary
@@ -191,30 +217,36 @@ Heuristic detection for why evidence is empty:
 - Fact cross-referencing
 - Synthesis/summarization phase
 
-### Gap 5: No Research Model Specialization
-**Current:** Uses same "fast" tier model for all evidence work
-**Missing:**
-- Dedicated research assistant model configuration
+### Gap 5: No Research Model Specialization ✅ RESOLVED
+**Status:** ✅ Implemented (2026-01-12)
+**Current:** Dedicated research model configuration with fallback
+**Implementation:**
+- ✅ Dedicated research assistant model configuration (`openrouter_research_model`)
+- ✅ Default: `google/gemini-2.5-flash` (70% cheaper than Haiku)
+- ✅ Fallback to "fast" tier if not configured
+
+**Future Enhancement:**
 - Model specialization per research phase:
   - Search query generation → fast model
-  - Fact extraction → balanced model
+  - Fact extraction → research model (now implemented)
   - Synthesis/summary → premium model
 
 ---
 
 ## 3. CURRENT MODEL USAGE FOR EVIDENCE/RESEARCH
 
-### Evidence Extraction Model
+### Evidence Extraction Model ✅ UPDATED
 
 **Location:** `quillo_agent/services/evidence.py:194`
 
-**Code:**
+**Code (NEW):**
 ```python
-model = llm_router._get_openrouter_model(tier="fast")
+model = settings.openrouter_research_model if settings.openrouter_research_model else llm_router._get_openrouter_model(tier="fast")
 ```
 
-**Resolved To:** `anthropic/claude-3-haiku`
-**Config Source:** `quillo_agent/config.py:23` → `openrouter_fast_model`
+**Default Model:** `google/gemini-2.5-flash`
+**Config Source:** `quillo_agent/config.py:35` → `openrouter_research_model`
+**Fallback:** `anthropic/claude-3-haiku` (via `tier="fast"` if research model not configured)
 
 **Context:**
 - Used for fact extraction from DDG snippets
