@@ -47,6 +47,11 @@ from ..trust_contract import (
     extract_disagreements,
     detect_consequence
 )
+from ..self_explanation import (
+    is_transparency_query,
+    build_transparency_card,
+    build_micro_disclosures
+)
 
 
 # Rate limiter instance
@@ -481,6 +486,30 @@ async def ui_ask_quillopreneur(
     # Generate trace ID
     trace_id = str(uuid.uuid4())
 
+    # SELF-EXPLANATION v1: Check for transparency query (short-circuit before any LLM calls)
+    if is_transparency_query(payload.text):
+        logger.info(f"[{trace_id}] Transparency query detected - returning transparency card")
+
+        # Build state dict (for /ask, most flags are false since it's simpler than multi-agent)
+        transparency_state = {
+            "using_conversation_context": False,  # TODO: Enable when conversation storage implemented
+            "using_session_context": False,  # Not yet implemented
+            "using_profile": False,  # /ask doesn't use profile yet
+            "using_evidence": False,  # Haven't fetched yet
+            "stress_test_mode": False,  # /ask doesn't use stress test
+            "facts_used": [],
+            "not_assuming": ["I'm not filling missing details without you confirming them."],
+            "needs_from_user": []
+        }
+
+        transparency_card = build_transparency_card(transparency_state)
+
+        return AskResponse(
+            answer=transparency_card,
+            model="self-explanation-v1",
+            trace_id=trace_id
+        )
+
     # TRUST CONTRACT STEP 1: Check for missing assumptions
     # Build context dict (for future: conversation history, attachments, etc.)
     context = {
@@ -543,6 +572,17 @@ async def ui_ask_quillopreneur(
         final_answer = f"{evidence_block}\n\n{answer}"
     elif evidence_note:
         final_answer = f"{evidence_note}\n\n{answer}"
+
+    # SELF-EXPLANATION v1: Add micro-disclosures if applicable
+    micro_disclosures = build_micro_disclosures(
+        using_evidence=bool(evidence_block),  # True if evidence was successfully fetched
+        stress_test_mode=False,  # /ask doesn't use stress test mode
+        using_conversation_context=False,  # TODO: Enable when conversation storage implemented
+        using_profile=False  # /ask doesn't use profile yet
+    )
+
+    if micro_disclosures:
+        final_answer = micro_disclosures + final_answer
 
     return AskResponse(
         answer=final_answer,
@@ -727,6 +767,44 @@ async def ui_multi_agent_chat(
     # Generate trace ID
     trace_id = str(uuid.uuid4())
 
+    # SELF-EXPLANATION v1: Check for transparency query (short-circuit before any LLM calls)
+    if is_transparency_query(payload.text):
+        logger.info(f"[{trace_id}] Transparency query detected in multi-agent - returning transparency card")
+
+        # Check if this would be a stress test scenario
+        stress_test_mode_check = detect_consequence(payload.text)
+
+        # Build state dict for transparency card
+        transparency_state = {
+            "using_conversation_context": False,  # TODO: Enable when conversation storage implemented
+            "using_session_context": False,  # Not yet implemented
+            "using_profile": False,  # Not yet used in multi-agent
+            "using_evidence": False,  # Haven't fetched yet
+            "stress_test_mode": stress_test_mode_check,
+            "facts_used": [],
+            "not_assuming": ["I'm not filling missing details without you confirming them."],
+            "needs_from_user": []
+        }
+
+        transparency_card = build_transparency_card(transparency_state)
+
+        messages = [MultiAgentMessage(
+            role="assistant",
+            agent="quillo",
+            content=transparency_card,
+            model_id="self-explanation-v1",
+            live=True,
+            unavailable_reason=None
+        )]
+
+        return MultiAgentResponse(
+            messages=messages,
+            provider="self-explanation-v1",
+            trace_id=trace_id,
+            fallback_reason=None,
+            peers_unavailable=False
+        )
+
     # TRUST CONTRACT STEP 1: Check for missing assumptions
     context = {
         "has_previous_context": False,
@@ -802,6 +880,21 @@ async def ui_multi_agent_chat(
 
     # Convert to MultiAgentMessage models
     messages = [MultiAgentMessage(**msg) for msg in messages_data]
+
+    # SELF-EXPLANATION v1: Add micro-disclosures to synthesis message if applicable
+    micro_disclosures = build_micro_disclosures(
+        using_evidence=bool(evidence_context and "Evidence (from web sources):" in evidence_context),
+        stress_test_mode=stress_test_mode,
+        using_conversation_context=False,  # TODO: Enable when conversation storage implemented
+        using_profile=False  # Not yet used in multi-agent
+    )
+
+    if micro_disclosures and messages:
+        # Prepend to the synthesis message (last message, typically from quillo)
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].role == "assistant" and messages[i].agent == "quillo":
+                messages[i].content = micro_disclosures + messages[i].content
+                break
 
     return MultiAgentResponse(
         messages=messages,
