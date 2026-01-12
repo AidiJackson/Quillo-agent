@@ -28,7 +28,8 @@ from ..schemas import (
     EvidenceRequest, EvidenceResponse,
     TaskIntentCreate, TaskIntentOut,
     TaskPlanOut,
-    UserPrefsUpdate, UserPrefsOut
+    UserPrefsUpdate, UserPrefsOut,
+    JudgmentProfileCreateUpdate, JudgmentProfileResponse, JudgmentProfileDeleteResponse
 )
 from ..services import quillo, advice, memory as memory_service
 from ..services.execution import execution_service
@@ -39,6 +40,13 @@ from ..services.evidence import retrieve_evidence
 from ..services.tasks.service import TaskIntentService
 from ..services.tasks.plan_service import TaskPlanService
 from ..services.user_prefs.service import UserPrefsService
+from ..services.judgment_profile import (
+    get_profile as get_judgment_profile,
+    upsert_profile as upsert_judgment_profile,
+    delete_profile as delete_judgment_profile,
+    profile_exists as judgment_profile_exists,
+    JudgmentProfileValidationError
+)
 from ..trust_contract import (
     classify_prompt_needs_evidence,
     enforce_no_assumptions,
@@ -490,14 +498,32 @@ async def ui_ask_quillopreneur(
     if is_transparency_query(payload.text):
         logger.info(f"[{trace_id}] Transparency query detected - returning transparency card")
 
+        # Check judgment profile existence (safe DB read in transparency path)
+        user_key_for_profile = payload.user_id if payload.user_id else "global"
+        profile_present = False
+        profile_check_failed = False
+        try:
+            profile_present = judgment_profile_exists(db, user_key_for_profile)
+        except Exception as e:
+            logger.warning(f"[{trace_id}] Profile existence check failed: {e}")
+            profile_check_failed = True
+
         # Build state dict (for /ask, most flags are false since it's simpler than multi-agent)
+        facts_used = []
+        if profile_check_failed:
+            facts_used.append({
+                "text": "Profile availability could not be verified.",
+                "source": "",
+                "timestamp": ""
+            })
+
         transparency_state = {
             "using_conversation_context": False,  # TODO: Enable when conversation storage implemented
             "using_session_context": False,  # Not yet implemented
-            "using_profile": False,  # /ask doesn't use profile yet
+            "using_profile": profile_present,  # True if judgment profile exists
             "using_evidence": False,  # Haven't fetched yet
             "stress_test_mode": False,  # /ask doesn't use stress test
-            "facts_used": [],
+            "facts_used": facts_used,
             "not_assuming": ["I'm not filling missing details without you confirming them."],
             "needs_from_user": []
         }
@@ -774,14 +800,32 @@ async def ui_multi_agent_chat(
         # Check if this would be a stress test scenario
         stress_test_mode_check = detect_consequence(payload.text)
 
+        # Check judgment profile existence (safe DB read in transparency path)
+        user_key_for_profile = payload.user_id if payload.user_id else "global"
+        profile_present = False
+        profile_check_failed = False
+        try:
+            profile_present = judgment_profile_exists(db, user_key_for_profile)
+        except Exception as e:
+            logger.warning(f"[{trace_id}] Profile existence check failed: {e}")
+            profile_check_failed = True
+
         # Build state dict for transparency card
+        facts_used = []
+        if profile_check_failed:
+            facts_used.append({
+                "text": "Profile availability could not be verified.",
+                "source": "",
+                "timestamp": ""
+            })
+
         transparency_state = {
             "using_conversation_context": False,  # TODO: Enable when conversation storage implemented
             "using_session_context": False,  # Not yet implemented
-            "using_profile": False,  # Not yet used in multi-agent
+            "using_profile": profile_present,  # True if judgment profile exists
             "using_evidence": False,  # Haven't fetched yet
             "stress_test_mode": stress_test_mode_check,
-            "facts_used": [],
+            "facts_used": facts_used,
             "not_assuming": ["I'm not filling missing details without you confirming them."],
             "needs_from_user": []
         }
@@ -1252,3 +1296,138 @@ async def ui_update_user_prefs(
         created_at=prefs.created_at.isoformat(),
         updated_at=prefs.updated_at.isoformat()
     )
+
+
+# Judgment Profile v1 endpoints
+
+@router.get("/profile/judgment", response_model=JudgmentProfileResponse)
+async def ui_get_judgment_profile(
+    user_key: str = Query("global", description="User identifier (default: global)"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> JudgmentProfileResponse:
+    """
+    Get judgment profile for a user (v1).
+
+    Returns explicit, user-confirmed judgment preferences.
+    NO automatic inference - all fields must be explicitly set by user.
+
+    TODO: Replace user_key query param with session-derived identity when
+    cookie-session infrastructure is implemented.
+
+    Args:
+        user_key: User identifier (defaults to "global")
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        JudgmentProfileResponse with profile data or null if no profile exists
+    """
+    logger.info(f"UI GET /profile/judgment: user_key={user_key}")
+
+    profile_data = get_judgment_profile(db, user_key)
+
+    if profile_data is None:
+        return JudgmentProfileResponse(
+            version="judgment_profile_v1",
+            profile=None,
+            updated_at=None
+        )
+
+    return JudgmentProfileResponse(
+        version=profile_data["version"],
+        profile=profile_data["profile"],
+        updated_at=profile_data["updated_at"]
+    )
+
+
+@router.post("/profile/judgment", response_model=JudgmentProfileResponse)
+@limiter.limit("30/minute")
+async def ui_upsert_judgment_profile(
+    request: Request,
+    payload: JudgmentProfileCreateUpdate,
+    user_key: str = Query("global", description="User identifier (default: global)"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> JudgmentProfileResponse:
+    """
+    Create or update judgment profile for a user (v1).
+
+    Validates profile against strict v1 schema:
+    - Only allowed keys (rejects unknown keys)
+    - Each field must have source="explicit" and confirmed_at
+    - Enum fields must have valid values
+    - Max payload size: 20KB
+
+    Rate limited to 30 requests per minute per IP.
+
+    TODO: Replace user_key query param with session-derived identity when
+    cookie-session infrastructure is implemented.
+
+    TODO: Add CSRF protection when CSRF infrastructure is implemented.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: JudgmentProfileCreateUpdate with profile data
+        user_key: User identifier (defaults to "global")
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        JudgmentProfileResponse with saved profile data
+
+    Raises:
+        HTTPException 400: If validation fails
+    """
+    logger.info(f"UI POST /profile/judgment: user_key={user_key}")
+
+    try:
+        profile_data = upsert_judgment_profile(
+            db=db,
+            user_key=user_key,
+            profile=payload.profile
+        )
+    except JudgmentProfileValidationError as e:
+        logger.warning(f"Judgment profile validation failed for user_key={user_key}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return JudgmentProfileResponse(
+        version=profile_data["version"],
+        profile=profile_data["profile"],
+        updated_at=profile_data["updated_at"]
+    )
+
+
+@router.delete("/profile/judgment", response_model=JudgmentProfileDeleteResponse)
+@limiter.limit("30/minute")
+async def ui_delete_judgment_profile(
+    request: Request,
+    user_key: str = Query("global", description="User identifier (default: global)"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> JudgmentProfileDeleteResponse:
+    """
+    Delete judgment profile for a user (v1).
+
+    Permanently removes user's judgment profile.
+    Rate limited to 30 requests per minute per IP.
+
+    TODO: Replace user_key query param with session-derived identity when
+    cookie-session infrastructure is implemented.
+
+    TODO: Add CSRF protection when CSRF infrastructure is implemented.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        user_key: User identifier (defaults to "global")
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        JudgmentProfileDeleteResponse with deletion status
+    """
+    logger.info(f"UI DELETE /profile/judgment: user_key={user_key}")
+
+    deleted = delete_judgment_profile(db, user_key)
+
+    return JudgmentProfileDeleteResponse(deleted=deleted)
