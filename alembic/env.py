@@ -16,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from quillo_agent.db import Base
 from quillo_agent.config import settings
 import quillo_agent.models  # noqa: ensure models are loaded
+import quillo_agent.services.tasks.models  # noqa: ensure task models are loaded
+import quillo_agent.services.user_prefs.models  # noqa: ensure user prefs models are loaded
+import quillo_agent.services.judgment_profile.models  # noqa: ensure judgment profile models are loaded
 
 # this is the Alembic Config object
 config = context.config

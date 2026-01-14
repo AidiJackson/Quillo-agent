@@ -28,7 +28,8 @@ from ..schemas import (
     EvidenceRequest, EvidenceResponse,
     TaskIntentCreate, TaskIntentOut,
     TaskPlanOut,
-    UserPrefsUpdate, UserPrefsOut
+    UserPrefsUpdate, UserPrefsOut,
+    JudgmentProfileCreateUpdate, JudgmentProfileResponse, JudgmentProfileDeleteResponse
 )
 from ..services import quillo, advice, memory as memory_service
 from ..services.execution import execution_service
@@ -39,6 +40,26 @@ from ..services.evidence import retrieve_evidence
 from ..services.tasks.service import TaskIntentService
 from ..services.tasks.plan_service import TaskPlanService
 from ..services.user_prefs.service import UserPrefsService
+from ..services.judgment_profile import (
+    get_profile as get_judgment_profile,
+    upsert_profile as upsert_judgment_profile,
+    delete_profile as delete_judgment_profile,
+    profile_exists as judgment_profile_exists,
+    JudgmentProfileValidationError
+)
+from ..trust_contract import (
+    classify_prompt_needs_evidence,
+    enforce_no_assumptions,
+    format_model_output,
+    format_synthesis,
+    extract_disagreements,
+    detect_consequence
+)
+from ..self_explanation import (
+    is_transparency_query,
+    build_transparency_card,
+    build_micro_disclosures
+)
 
 
 # Rate limiter instance
@@ -449,9 +470,13 @@ async def ui_ask_quillopreneur(
     token: str = Depends(verify_ui_token)
 ) -> AskResponse:
     """
-    UI proxy for Quillopreneur business advice.
+    UI proxy for Quillopreneur business advice with TRUST CONTRACT v1 enforcement.
 
-    Calls underlying service directly without requiring API key.
+    TRUST CONTRACT BEHAVIORS:
+    1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
+    2. No assumptions: Asks clarifying questions if critical context is missing
+    3. Evidence limitations: States clearly when evidence unavailable
+
     Rate limited to 30 requests per minute per IP.
 
     Args:
@@ -464,20 +489,129 @@ async def ui_ask_quillopreneur(
         AskResponse with answer, model, and trace_id
     """
     import uuid
-    logger.info(f"UI POST /ask: user_id={payload.user_id}")
+    logger.info(f"UI POST /ask: user_id={payload.user_id}, trust_contract=v1")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
 
+    # SELF-EXPLANATION v1: Check for transparency query (short-circuit before any LLM calls)
+    if is_transparency_query(payload.text):
+        logger.info(f"[{trace_id}] Transparency query detected - returning transparency card")
+
+        # Check judgment profile existence (safe DB read in transparency path)
+        user_key_for_profile = payload.user_id if payload.user_id else "global"
+        profile_present = False
+        profile_check_failed = False
+        try:
+            profile_present = judgment_profile_exists(db, user_key_for_profile)
+        except Exception as e:
+            logger.warning(f"[{trace_id}] Profile existence check failed: {e}")
+            profile_check_failed = True
+
+        # Build state dict (for /ask, most flags are false since it's simpler than multi-agent)
+        facts_used = []
+        if profile_check_failed:
+            facts_used.append({
+                "text": "Profile availability could not be verified.",
+                "source": "",
+                "timestamp": ""
+            })
+
+        transparency_state = {
+            "using_conversation_context": False,  # TODO: Enable when conversation storage implemented
+            "using_session_context": False,  # Not yet implemented
+            "using_profile": profile_present,  # True if judgment profile exists
+            "using_evidence": False,  # Haven't fetched yet
+            "stress_test_mode": False,  # /ask doesn't use stress test
+            "facts_used": facts_used,
+            "not_assuming": ["I'm not filling missing details without you confirming them."],
+            "needs_from_user": []
+        }
+
+        transparency_card = build_transparency_card(transparency_state)
+
+        return AskResponse(
+            answer=transparency_card,
+            model="self-explanation-v1",
+            trace_id=trace_id
+        )
+
+    # TRUST CONTRACT STEP 1: Check for missing assumptions
+    # Build context dict (for future: conversation history, attachments, etc.)
+    context = {
+        "has_previous_context": False,  # TODO: Check conversation storage
+        "has_attachments": False
+    }
+
+    ok_to_proceed, questions = enforce_no_assumptions(payload.text, context)
+
+    if not ok_to_proceed and questions:
+        # Critical context missing - return questions without calling LLM
+        logger.info(f"[{trace_id}] No-assumptions triggered: {len(questions)} questions")
+        questions_text = "I need a few details before I can help (no guessing):\n\n"
+        for i, question in enumerate(questions, 1):
+            questions_text += f"{i}. {question}\n"
+
+        return AskResponse(
+            answer=questions_text.strip(),
+            model="trust-contract-v1",
+            trace_id=trace_id
+        )
+
+    # TRUST CONTRACT STEP 2: Check if evidence is needed
+    needs_evidence = classify_prompt_needs_evidence(payload.text)
+    evidence_block = None
+    evidence_note = None
+
+    if needs_evidence:
+        logger.info(f"[{trace_id}] Evidence default-on triggered for prompt")
+        try:
+            evidence_response = await retrieve_evidence(payload.text)
+            if evidence_response.ok and evidence_response.facts:
+                # Build evidence block from facts
+                evidence_lines = ["**Evidence (from web sources):**\n"]
+                for fact in evidence_response.facts:
+                    source = next((s for s in evidence_response.sources if s.id == fact.source_id), None)
+                    source_label = f"{source.domain}" if source else "Unknown"
+                    evidence_lines.append(f"- {fact.text} [{source_label}]")
+                evidence_block = "\n".join(evidence_lines)
+                logger.info(f"[{trace_id}] Evidence fetched: {len(evidence_response.facts)} facts from {len(evidence_response.sources)} sources")
+            else:
+                evidence_note = "⚠️ Evidence fetch attempted but no results found. Proceeding with limited factual certainty."
+                logger.warning(f"[{trace_id}] Evidence fetch failed or empty")
+        except Exception as e:
+            evidence_note = "⚠️ Evidence temporarily unavailable. Response may have limited factual certainty."
+            logger.error(f"[{trace_id}] Evidence fetch error: {e}")
+
     # Get business advice using the service layer
+    # Note: Passing evidence_block to the answer_business_question is a future enhancement
+    # For now, we prepend it to the response
     answer, model = await advice.answer_business_question(
         text=payload.text,
         user_id=payload.user_id,
         db=db
     )
 
+    # TRUST CONTRACT STEP 3: Format response with evidence context
+    final_answer = answer
+    if evidence_block:
+        final_answer = f"{evidence_block}\n\n{answer}"
+    elif evidence_note:
+        final_answer = f"{evidence_note}\n\n{answer}"
+
+    # SELF-EXPLANATION v1: Add micro-disclosures if applicable
+    micro_disclosures = build_micro_disclosures(
+        using_evidence=bool(evidence_block),  # True if evidence was successfully fetched
+        stress_test_mode=False,  # /ask doesn't use stress test mode
+        using_conversation_context=False,  # TODO: Enable when conversation storage implemented
+        using_profile=False  # /ask doesn't use profile yet
+    )
+
+    if micro_disclosures:
+        final_answer = micro_disclosures + final_answer
+
     return AskResponse(
-        answer=answer,
+        answer=final_answer,
         model=model,
         trace_id=trace_id
     )
@@ -629,15 +763,20 @@ async def ui_multi_agent_chat(
     token: str = Depends(verify_ui_token)
 ) -> MultiAgentResponse:
     """
-    UI proxy for multi-agent chat (v0).
+    UI proxy for multi-agent chat with TRUST CONTRACT v1 + STRESS TEST v1 enforcement.
 
-    Minimal proof: 3 agents, one thread, real conversation.
-    - Primary (Quillo) frames
-    - Claude gives perspective
-    - Grok gives contrasting perspective
-    - Primary (Quillo) synthesizes
+    TRUST CONTRACT BEHAVIORS:
+    1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
+    2. No assumptions: Asks clarifying questions if critical context is missing
+    3. Structured outputs: Each agent provides Evidence/Interpretation/Recommendation
+    4. Meaningful disagreements: Synthesis preserves substantive differences
+    5. Evidence limitations: States clearly when evidence unavailable
 
-    No tools execution. No streaming. Just conversation.
+    STRESS TEST v1 BEHAVIORS (automatic when consequence detected):
+    6. Consequence detection: Auto-detects decision-making/high-stakes prompts
+    7. Lens assignments: Risk/Relationship/Strategy/Execution lenses
+    8. Stricter synthesis: Top risks, disagreements, alternatives, execution tool
+
     Rate limited to 30 requests per minute per IP.
 
     Args:
@@ -649,21 +788,157 @@ async def ui_multi_agent_chat(
         MultiAgentResponse with messages, provider, trace_id
     """
     import uuid
-    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, text_len={len(payload.text)}")
+    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, trust_contract=v1, stress_test=v1")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
 
-    # Run multi-agent chat
+    # SELF-EXPLANATION v1: Check for transparency query (short-circuit before any LLM calls)
+    if is_transparency_query(payload.text):
+        logger.info(f"[{trace_id}] Transparency query detected in multi-agent - returning transparency card")
+
+        # Check if this would be a stress test scenario
+        stress_test_mode_check = detect_consequence(payload.text)
+
+        # Check judgment profile existence (safe DB read in transparency path)
+        user_key_for_profile = payload.user_id if payload.user_id else "global"
+        profile_present = False
+        profile_check_failed = False
+        try:
+            profile_present = judgment_profile_exists(db, user_key_for_profile)
+        except Exception as e:
+            logger.warning(f"[{trace_id}] Profile existence check failed: {e}")
+            profile_check_failed = True
+
+        # Build state dict for transparency card
+        facts_used = []
+        if profile_check_failed:
+            facts_used.append({
+                "text": "Profile availability could not be verified.",
+                "source": "",
+                "timestamp": ""
+            })
+
+        transparency_state = {
+            "using_conversation_context": False,  # TODO: Enable when conversation storage implemented
+            "using_session_context": False,  # Not yet implemented
+            "using_profile": profile_present,  # True if judgment profile exists
+            "using_evidence": False,  # Haven't fetched yet
+            "stress_test_mode": stress_test_mode_check,
+            "facts_used": facts_used,
+            "not_assuming": ["I'm not filling missing details without you confirming them."],
+            "needs_from_user": []
+        }
+
+        transparency_card = build_transparency_card(transparency_state)
+
+        messages = [MultiAgentMessage(
+            role="assistant",
+            agent="quillo",
+            content=transparency_card,
+            model_id="self-explanation-v1",
+            live=True,
+            unavailable_reason=None
+        )]
+
+        return MultiAgentResponse(
+            messages=messages,
+            provider="self-explanation-v1",
+            trace_id=trace_id,
+            fallback_reason=None,
+            peers_unavailable=False
+        )
+
+    # TRUST CONTRACT STEP 1: Check for missing assumptions
+    context = {
+        "has_previous_context": False,
+        "has_attachments": False
+    }
+
+    ok_to_proceed, questions = enforce_no_assumptions(payload.text, context)
+
+    if not ok_to_proceed and questions:
+        # Return questions as a single message from Quillo
+        logger.info(f"[{trace_id}] No-assumptions triggered in multi-agent: {len(questions)} questions")
+        questions_text = "I need a few details before we can provide multi-agent perspectives (no guessing):\n\n"
+        for i, question in enumerate(questions, 1):
+            questions_text += f"{i}. {question}\n"
+
+        messages = [MultiAgentMessage(
+            role="assistant",
+            agent="quillo",
+            content=questions_text.strip(),
+            model_id=None,
+            live=True,
+            unavailable_reason=None
+        )]
+
+        return MultiAgentResponse(
+            messages=messages,
+            provider="trust-contract-v1",
+            trace_id=trace_id,
+            fallback_reason=None,
+            peers_unavailable=False
+        )
+
+    # TRUST CONTRACT STEP 2: Check if evidence is needed
+    needs_evidence = classify_prompt_needs_evidence(payload.text)
+    evidence_context = None
+
+    if needs_evidence:
+        logger.info(f"[{trace_id}] Evidence default-on triggered for multi-agent prompt")
+        try:
+            evidence_response = await retrieve_evidence(payload.text)
+            if evidence_response.ok and evidence_response.facts:
+                # Build evidence context for agents
+                evidence_lines = ["Evidence (from web sources):"]
+                for fact in evidence_response.facts:
+                    source = next((s for s in evidence_response.sources if s.id == fact.source_id), None)
+                    source_label = f"{source.domain}" if source else "Unknown"
+                    evidence_lines.append(f"- {fact.text} [{source_label}]")
+                evidence_context = "\n".join(evidence_lines)
+                logger.info(f"[{trace_id}] Evidence fetched for multi-agent: {len(evidence_response.facts)} facts")
+            else:
+                evidence_context = "Evidence fetch attempted but no results found. Proceed with limited factual certainty."
+                logger.warning(f"[{trace_id}] Evidence fetch failed or empty for multi-agent")
+        except Exception as e:
+            evidence_context = "Evidence temporarily unavailable. Responses may have limited factual certainty."
+            logger.error(f"[{trace_id}] Evidence fetch error in multi-agent: {e}")
+
+    # STRESS TEST v1: Check if consequence/decision detected
+    stress_test_mode = detect_consequence(payload.text)
+    if stress_test_mode:
+        logger.info(f"[{trace_id}] STRESS TEST v1 activated - consequence detected")
+    else:
+        logger.info(f"[{trace_id}] Normal multi-agent mode - no consequence detected")
+
+    # Run multi-agent chat with evidence context and stress test mode
     messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
         text=payload.text,
         user_id=payload.user_id,
         agents=payload.agents,
-        trace_id=trace_id
+        trace_id=trace_id,
+        evidence_context=evidence_context,  # Pass evidence to multi-agent
+        stress_test_mode=stress_test_mode  # Pass stress test flag
     )
 
     # Convert to MultiAgentMessage models
     messages = [MultiAgentMessage(**msg) for msg in messages_data]
+
+    # SELF-EXPLANATION v1: Add micro-disclosures to synthesis message if applicable
+    micro_disclosures = build_micro_disclosures(
+        using_evidence=bool(evidence_context and "Evidence (from web sources):" in evidence_context),
+        stress_test_mode=stress_test_mode,
+        using_conversation_context=False,  # TODO: Enable when conversation storage implemented
+        using_profile=False  # Not yet used in multi-agent
+    )
+
+    if micro_disclosures and messages:
+        # Prepend to the synthesis message (last message, typically from quillo)
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].role == "assistant" and messages[i].agent == "quillo":
+                messages[i].content = micro_disclosures + messages[i].content
+                break
 
     return MultiAgentResponse(
         messages=messages,
@@ -1021,3 +1296,138 @@ async def ui_update_user_prefs(
         created_at=prefs.created_at.isoformat(),
         updated_at=prefs.updated_at.isoformat()
     )
+
+
+# Judgment Profile v1 endpoints
+
+@router.get("/profile/judgment", response_model=JudgmentProfileResponse)
+async def ui_get_judgment_profile(
+    user_key: str = Query("global", description="User identifier (default: global)"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> JudgmentProfileResponse:
+    """
+    Get judgment profile for a user (v1).
+
+    Returns explicit, user-confirmed judgment preferences.
+    NO automatic inference - all fields must be explicitly set by user.
+
+    TODO: Replace user_key query param with session-derived identity when
+    cookie-session infrastructure is implemented.
+
+    Args:
+        user_key: User identifier (defaults to "global")
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        JudgmentProfileResponse with profile data or null if no profile exists
+    """
+    logger.info(f"UI GET /profile/judgment: user_key={user_key}")
+
+    profile_data = get_judgment_profile(db, user_key)
+
+    if profile_data is None:
+        return JudgmentProfileResponse(
+            version="judgment_profile_v1",
+            profile=None,
+            updated_at=None
+        )
+
+    return JudgmentProfileResponse(
+        version=profile_data["version"],
+        profile=profile_data["profile"],
+        updated_at=profile_data["updated_at"]
+    )
+
+
+@router.post("/profile/judgment", response_model=JudgmentProfileResponse)
+@limiter.limit("30/minute")
+async def ui_upsert_judgment_profile(
+    request: Request,
+    payload: JudgmentProfileCreateUpdate,
+    user_key: str = Query("global", description="User identifier (default: global)"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> JudgmentProfileResponse:
+    """
+    Create or update judgment profile for a user (v1).
+
+    Validates profile against strict v1 schema:
+    - Only allowed keys (rejects unknown keys)
+    - Each field must have source="explicit" and confirmed_at
+    - Enum fields must have valid values
+    - Max payload size: 20KB
+
+    Rate limited to 30 requests per minute per IP.
+
+    TODO: Replace user_key query param with session-derived identity when
+    cookie-session infrastructure is implemented.
+
+    TODO: Add CSRF protection when CSRF infrastructure is implemented.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        payload: JudgmentProfileCreateUpdate with profile data
+        user_key: User identifier (defaults to "global")
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        JudgmentProfileResponse with saved profile data
+
+    Raises:
+        HTTPException 400: If validation fails
+    """
+    logger.info(f"UI POST /profile/judgment: user_key={user_key}")
+
+    try:
+        profile_data = upsert_judgment_profile(
+            db=db,
+            user_key=user_key,
+            profile=payload.profile
+        )
+    except JudgmentProfileValidationError as e:
+        logger.warning(f"Judgment profile validation failed for user_key={user_key}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return JudgmentProfileResponse(
+        version=profile_data["version"],
+        profile=profile_data["profile"],
+        updated_at=profile_data["updated_at"]
+    )
+
+
+@router.delete("/profile/judgment", response_model=JudgmentProfileDeleteResponse)
+@limiter.limit("30/minute")
+async def ui_delete_judgment_profile(
+    request: Request,
+    user_key: str = Query("global", description="User identifier (default: global)"),
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_ui_token)
+) -> JudgmentProfileDeleteResponse:
+    """
+    Delete judgment profile for a user (v1).
+
+    Permanently removes user's judgment profile.
+    Rate limited to 30 requests per minute per IP.
+
+    TODO: Replace user_key query param with session-derived identity when
+    cookie-session infrastructure is implemented.
+
+    TODO: Add CSRF protection when CSRF infrastructure is implemented.
+
+    Args:
+        request: FastAPI request (for rate limiting)
+        user_key: User identifier (defaults to "global")
+        db: Database session
+        token: Validated UI token
+
+    Returns:
+        JudgmentProfileDeleteResponse with deletion status
+    """
+    logger.info(f"UI DELETE /profile/judgment: user_key={user_key}")
+
+    deleted = delete_judgment_profile(db, user_key)
+
+    return JudgmentProfileDeleteResponse(deleted=deleted)

@@ -252,3 +252,22 @@ class UserPrefsOut(BaseModel):
     approval_mode: str = Field(..., description="Task approval mode")
     created_at: str = Field(..., description="ISO timestamp of creation")
     updated_at: str = Field(..., description="ISO timestamp of last update")
+
+
+# Judgment Profile v1 schemas
+
+class JudgmentProfileCreateUpdate(BaseModel):
+    """Request to create or update judgment profile"""
+    profile: Dict[str, Any] = Field(..., description="Judgment profile data (must conform to v1 schema)")
+
+
+class JudgmentProfileResponse(BaseModel):
+    """Response with judgment profile data"""
+    version: str = Field(..., description="Profile schema version")
+    profile: Optional[Dict[str, Any]] = Field(None, description="Profile data (null if no profile exists)")
+    updated_at: Optional[str] = Field(None, description="ISO timestamp of last update")
+
+
+class JudgmentProfileDeleteResponse(BaseModel):
+    """Response after deleting judgment profile"""
+    deleted: bool = Field(..., description="True if profile was deleted")

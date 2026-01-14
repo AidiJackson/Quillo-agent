@@ -45,7 +45,11 @@
       "Bash(replit)",
       "Bash(start)",
       "Bash(alembic upgrade:*)",
-      "Bash(alembic current:*)"
+      "Bash(alembic current:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(psql:*)",
+      "Bash(alembic downgrade:*)",
+      "Bash(alembic stamp:*)"
     ]
   }
 }

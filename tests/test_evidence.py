@@ -487,3 +487,114 @@ class TestEvidenceGuardsV1_1:
         # When facts are present, empty_reason should be None
         assert len(mock_response.facts) > 0
         assert mock_response.empty_reason is None
+
+
+class TestResearchModelSelection:
+    """Test that Evidence uses dedicated research model configuration"""
+
+    @pytest.mark.anyio
+    @patch('quillo_agent.services.evidence._search_web')
+    @patch('quillo_agent.services.evidence.llm_router._openrouter_chat')
+    async def test_uses_research_model_when_configured(self, mock_chat, mock_search):
+        """Test that evidence extraction uses openrouter_research_model when set"""
+        from quillo_agent.services.evidence import _extract_facts_from_results
+        from quillo_agent.config import settings
+
+        # Mock search results
+        mock_results = [
+            {
+                "title": "Test Article",
+                "url": "https://example.com",
+                "snippet": "Test content",
+                "domain": "example.com"
+            }
+        ]
+
+        # Mock LLM response
+        mock_chat.return_value = """FACT: Test fact 1
+SOURCE: 1
+DATE: unknown
+
+FACT: Test fact 2
+SOURCE: 1
+DATE: 2024-01-01"""
+
+        # Test with research model configured
+        with patch.object(settings, 'openrouter_research_model', 'google/gemini-2.5-flash'):
+            await _extract_facts_from_results("test query", mock_results)
+
+            # Verify that the research model was used
+            mock_chat.assert_called_once()
+            call_kwargs = mock_chat.call_args[1]
+            assert call_kwargs['model'] == 'google/gemini-2.5-flash'
+
+    @pytest.mark.anyio
+    @patch('quillo_agent.services.evidence._search_web')
+    @patch('quillo_agent.services.evidence.llm_router._openrouter_chat')
+    @patch('quillo_agent.services.evidence.llm_router._get_openrouter_model')
+    async def test_falls_back_to_fast_tier_when_not_configured(self, mock_get_model, mock_chat, mock_search):
+        """Test that evidence extraction falls back to fast tier when research model not set"""
+        from quillo_agent.services.evidence import _extract_facts_from_results
+        from quillo_agent.config import settings
+
+        # Mock search results
+        mock_results = [
+            {
+                "title": "Test Article",
+                "url": "https://example.com",
+                "snippet": "Test content",
+                "domain": "example.com"
+            }
+        ]
+
+        # Mock fast tier model selection
+        mock_get_model.return_value = "anthropic/claude-3-haiku"
+
+        # Mock LLM response
+        mock_chat.return_value = """FACT: Test fact 1
+SOURCE: 1
+DATE: unknown"""
+
+        # Test with research model NOT configured (empty string)
+        with patch.object(settings, 'openrouter_research_model', ''):
+            await _extract_facts_from_results("test query", mock_results)
+
+            # Verify that fallback was used
+            mock_get_model.assert_called_once_with(tier="fast")
+            mock_chat.assert_called_once()
+            call_kwargs = mock_chat.call_args[1]
+            assert call_kwargs['model'] == "anthropic/claude-3-haiku"
+
+    @pytest.mark.anyio
+    @patch('quillo_agent.services.evidence._search_web')
+    @patch('quillo_agent.services.evidence.llm_router._openrouter_chat')
+    async def test_research_model_preserves_other_params(self, mock_chat, mock_search):
+        """Test that using research model doesn't change other LLM call parameters"""
+        from quillo_agent.services.evidence import _extract_facts_from_results
+        from quillo_agent.config import settings
+
+        # Mock search results
+        mock_results = [
+            {
+                "title": "Test Article",
+                "url": "https://example.com",
+                "snippet": "Test content",
+                "domain": "example.com"
+            }
+        ]
+
+        # Mock LLM response
+        mock_chat.return_value = """FACT: Test fact
+SOURCE: 1
+DATE: unknown"""
+
+        # Test with research model
+        with patch.object(settings, 'openrouter_research_model', 'google/gemini-2.5-flash'):
+            await _extract_facts_from_results("test query", mock_results)
+
+            # Verify that other parameters are unchanged
+            mock_chat.assert_called_once()
+            call_kwargs = mock_chat.call_args[1]
+            assert call_kwargs['max_tokens'] == 2000  # Should be unchanged
+            assert call_kwargs['timeout'] == 10.0  # Should be unchanged
+            assert 'messages' in call_kwargs  # Should still have messages

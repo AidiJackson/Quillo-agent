@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Zap, BarChart3, Sparkles, DollarSign, CheckCircle } from 'lucide-react';
 import { fetchUserPrefs, updateUserPrefs, UserPrefsOut } from '../../lib/quilloApi';
+import { JudgmentProfileSettings } from './JudgmentProfileSettings';
 
 export function SettingsScreen() {
   const [mode, setMode] = useState<'Fast' | 'Balanced' | 'Premium'>('Balanced');
@@ -295,6 +296,9 @@ export function SettingsScreen() {
             <p className="text-2xl font-semibold text-primary">$2.26</p>
           </div>
         </GlassCard>
+
+        {/* Judgment Profile */}
+        <JudgmentProfileSettings />
       </div>
     </div>
   );

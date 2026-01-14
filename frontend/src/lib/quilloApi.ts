@@ -817,3 +817,81 @@ export async function updateUserPrefs(
 
   return response.json();
 }
+
+/**
+ * Judgment Profile v1 - types and API
+ */
+
+export interface JudgmentProfileResponse {
+  version: string;
+  profile: Record<string, any> | null;
+  updated_at: string | null;
+}
+
+export interface JudgmentProfilePayload {
+  profile: Record<string, any>;
+}
+
+/**
+ * Get judgment profile for a user (v1)
+ * Returns null profile if no profile exists
+ */
+export async function getJudgmentProfile(
+  userKey: string = 'global'
+): Promise<JudgmentProfileResponse> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const url = `${API_BASE}/profile/judgment?user_key=${encodeURIComponent(userKey)}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Judgment profile fetch failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Create or update judgment profile for a user (v1)
+ * All fields must have source="explicit" and confirmed_at timestamp
+ */
+export async function upsertJudgmentProfile(
+  payload: JudgmentProfilePayload,
+  userKey: string = 'global'
+): Promise<JudgmentProfileResponse> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add UI token if configured (dev-only)
+  if (UI_TOKEN) {
+    headers['X-UI-Token'] = UI_TOKEN;
+  }
+
+  const url = `${API_BASE}/profile/judgment?user_key=${encodeURIComponent(userKey)}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Judgment profile save failed: ${response.status} - ${error}`);
+  }
+
+  return response.json();
+}
