@@ -8,6 +8,7 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { AuditLogScreen } from './components/AuditLogScreen';
 import { IntegrationsScreen } from './components/IntegrationsScreen';
 import { OnboardingWizard } from './components/OnboardingWizard';
+import { Toaster } from './components/ui/sonner';
 import { Menu } from 'lucide-react';
 import { getJudgmentProfile } from '@/lib/quilloApi';
 
@@ -83,6 +84,9 @@ export default function App() {
 
   return (
     <>
+      {/* Toast notifications */}
+      <Toaster />
+
       {/* Onboarding Wizard Modal */}
       {showOnboardingWizard && profileCheckComplete && (
         <OnboardingWizard
