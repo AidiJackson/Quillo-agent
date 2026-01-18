@@ -95,7 +95,7 @@ export default function App() {
         />
       )}
 
-      <div className="h-screen flex bg-gradient-to-br from-gray-50 via-blue-50/30 to-sky-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      <div className="h-dvh flex bg-gradient-to-br from-gray-50 via-blue-50/30 to-sky-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
         {/* Sidebar */}
         <Sidebar
           activeTab={activeTab}

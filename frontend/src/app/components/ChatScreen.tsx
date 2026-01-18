@@ -226,7 +226,7 @@ function IntelligenceStatusBadge({
 
   return (
     <div
-      className={`group relative px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
+      className={`group relative px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium flex items-center gap-1 sm:gap-2 ${
         isAIPowered
           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
           : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
@@ -235,12 +235,14 @@ function IntelligenceStatusBadge({
       {isAIPowered ? (
         <>
           <Zap className="w-3 h-3" />
-          AI-Powered
+          <span className="hidden sm:inline">AI-Powered</span>
+          <span className="sm:hidden">AI</span>
         </>
       ) : (
         <>
           <WifiOff className="w-3 h-3" />
-          Offline Mode
+          <span className="hidden sm:inline">Offline Mode</span>
+          <span className="sm:hidden">Offline</span>
           <ConnectAIModal />
         </>
       )}
@@ -931,14 +933,14 @@ export function ChatScreen() {
   return (
     <div className="flex-1 flex gap-6 h-full overflow-hidden">
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Status Badges */}
-        <div className="p-4 flex justify-end gap-2 flex-wrap">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* Status Badges - compact on mobile */}
+        <div className="px-3 py-2 sm:p-4 flex justify-end gap-1.5 sm:gap-2 flex-wrap shrink-0">
           {/* Intelligence Status Badge */}
           <IntelligenceStatusBadge status={intelligenceStatus} />
 
-          {/* Backend Status Badge */}
-          <div className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
+          {/* Backend Status Badge - icon only on mobile */}
+          <div className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium flex items-center gap-1 sm:gap-2 ${
             backendStatus === 'online'
               ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
               : backendStatus === 'offline'
@@ -948,21 +950,24 @@ export function ChatScreen() {
             {backendStatus === 'online' ? (
               <>
                 <CheckCircle className="w-3 h-3" />
-                Backend: OK
+                <span className="hidden sm:inline">Backend: OK</span>
               </>
             ) : backendStatus === 'offline' ? (
               <>
                 <XCircle className="w-3 h-3" />
-                Backend: Offline
+                <span className="hidden sm:inline">Backend: Offline</span>
               </>
             ) : (
-              <>Checking...</>
+              <>
+                <span className="hidden sm:inline">Checking...</span>
+                <span className="sm:hidden">...</span>
+              </>
             )}
           </div>
 
-          {/* Auth Status Badge */}
+          {/* Auth Status Badge - icon only on mobile */}
           {authStatus && (
-            <div className={`group relative px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 cursor-default ${
+            <div className={`group relative px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium flex items-center gap-1 sm:gap-2 cursor-default ${
               !authStatus.ui_token_required
                 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                 : authStatus.ui_token_configured
@@ -972,17 +977,17 @@ export function ChatScreen() {
               {!authStatus.ui_token_required ? (
                 <>
                   <Settings className="w-3 h-3" />
-                  Dev Bypass
+                  <span className="hidden sm:inline">Dev Bypass</span>
                 </>
               ) : authStatus.ui_token_configured ? (
                 <>
                   <CheckCircle className="w-3 h-3" />
-                  Auth: OK
+                  <span className="hidden sm:inline">Auth: OK</span>
                 </>
               ) : (
                 <>
                   <XCircle className="w-3 h-3" />
-                  Auth: Missing
+                  <span className="hidden sm:inline">Auth: Missing</span>
                 </>
               )}
               {/* Tooltip */}
@@ -998,12 +1003,12 @@ export function ChatScreen() {
           )}
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        {/* Messages - proper scrolling container */}
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 min-h-0">
           {messages.length === 0 && (
-            <div className="text-center text-muted-foreground py-20">
-              <p className="text-lg font-medium mb-2">Welcome to Uorin</p>
-              <p className="text-sm">Start chatting to get conversational assistance</p>
+            <div className="text-center text-muted-foreground py-8 sm:py-20">
+              <p className="text-base sm:text-lg font-medium mb-1 sm:mb-2">Welcome to Uorin</p>
+              <p className="text-xs sm:text-sm">Start chatting to get conversational assistance</p>
             </div>
           )}
           {messages.map((message) => (
@@ -1446,10 +1451,13 @@ export function ChatScreen() {
           ))}
         </div>
 
-        {/* Action Bar */}
-        <div className="p-6 border-t border-border bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl">
-          <div className="max-w-4xl mx-auto space-y-3">
-            {/* Input */}
+        {/* Action Bar - keyboard-safe with safe area insets */}
+        <div
+          className="shrink-0 p-3 sm:p-6 border-t border-border bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
+          <div className="max-w-4xl mx-auto space-y-2 sm:space-y-3">
+            {/* Input - mobile-optimized */}
             <div className="flex gap-2">
               <input
                 type="text"
@@ -1458,12 +1466,13 @@ export function ChatScreen() {
                 onKeyPress={(e) => e.key === 'Enter' && !loading && handleSend()}
                 placeholder="Message Uorin..."
                 disabled={loading}
-                className="flex-1 px-4 py-3 bg-input-background border border-border rounded-[16px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 text-base bg-input-background border border-border rounded-[12px] sm:rounded-[16px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                style={{ fontSize: '16px' }} // Prevent iOS zoom on focus
               />
               <button
                 onClick={handleSend}
                 disabled={loading || !input.trim()}
-                className="px-6 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-[16px] hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3.5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-[12px] sm:rounded-[16px] hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1471,13 +1480,14 @@ export function ChatScreen() {
                   <Send className="w-5 h-5" />
                 )}
               </button>
+              {/* Multi-agent button - icon only on mobile */}
               <button
                 onClick={handleMultiAgent}
                 disabled={loading || !input.trim()}
-                className="group relative px-4 py-3 bg-slate-600 text-white rounded-[16px] hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-1.5"
+                className="group relative px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-600 text-white rounded-[12px] sm:rounded-[16px] hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-1.5"
               >
                 <Brain className="w-4 h-4" />
-                Get second opinions
+                <span className="hidden sm:inline">Get second opinions</span>
                 {/* Tooltip */}
                 <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
                   Claude, Gemini, and DeepSeek will each reply once. Uorin will summarize.
@@ -1493,13 +1503,14 @@ export function ChatScreen() {
                 className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
               >
                 {showAdvancedTools ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                Advanced Tools
+                <span className="hidden sm:inline">Advanced Tools</span>
+                <span className="sm:hidden">More</span>
               </button>
-              <div className="flex gap-2">
-                <button className="px-3 py-2 bg-green-100 text-green-700 rounded-[12px] hover:bg-green-200 transition-all">
+              <div className="flex gap-1.5 sm:gap-2">
+                <button className="px-2.5 sm:px-3 py-1.5 sm:py-2 bg-green-100 text-green-700 rounded-[10px] sm:rounded-[12px] hover:bg-green-200 transition-all">
                   <ThumbsUp className="w-4 h-4" />
                 </button>
-                <button className="px-3 py-2 bg-red-100 text-red-700 rounded-[12px] hover:bg-red-200 transition-all">
+                <button className="px-2.5 sm:px-3 py-1.5 sm:py-2 bg-red-100 text-red-700 rounded-[10px] sm:rounded-[12px] hover:bg-red-200 transition-all">
                   <ThumbsDown className="w-4 h-4" />
                 </button>
               </div>
@@ -1507,7 +1518,7 @@ export function ChatScreen() {
 
             {/* Advanced Tools */}
             {showAdvancedTools && (
-              <div className="p-3 bg-accent/20 rounded-[12px] space-y-2">
+              <div className="p-2 sm:p-3 bg-accent/20 rounded-[10px] sm:rounded-[12px] space-y-2">
                 <p className="text-xs text-muted-foreground font-medium">Quick Actions:</p>
                 <div className="flex gap-2 flex-wrap">
                   <button
