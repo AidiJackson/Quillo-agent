@@ -70,6 +70,7 @@ class AskRequest(BaseModel):
     """Request for Quillopreneur business advice"""
     text: str = Field(..., description="Business question or topic")
     user_id: Optional[str] = Field(None, description="User identifier for personalization")
+    mode: Optional[str] = Field(None, description="Uorin mode: 'work' (default) or 'normal'. Work mode enables trust contract guardrails; normal mode is free chat.")
 
 
 class AskResponse(BaseModel):
@@ -132,7 +133,7 @@ class JudgmentResponse(BaseModel):
 class MultiAgentMessage(BaseModel):
     """Single message in multi-agent conversation"""
     role: str = Field(..., description="Message role: 'assistant' or 'user'")
-    agent: str = Field(..., description="Agent name: 'quillo', 'claude', 'grok'")
+    agent: str = Field(..., description="Agent name: 'quillo', 'claude', 'deepseek', 'gemini'")
     content: str = Field(..., description="Message content")
     model_id: Optional[str] = Field(None, description="Model ID attempted (e.g., 'anthropic/claude-3.5-sonnet')")
     live: bool = Field(True, description="True if live response, False if unavailable placeholder")
@@ -143,7 +144,8 @@ class MultiAgentRequest(BaseModel):
     """Request for multi-agent chat"""
     text: str = Field(..., description="User input text")
     user_id: Optional[str] = Field(None, description="User identifier")
-    agents: Optional[List[str]] = Field(None, description="List of agents to include (default: ['primary', 'claude', 'grok'])")
+    agents: Optional[List[str]] = Field(None, description="List of agents to include (default: ['primary', 'claude', 'deepseek', 'gemini'])")
+    mode: Optional[str] = Field(None, description="Uorin mode: 'work' (default) or 'normal'. Work mode enables trust contract guardrails; normal mode is free chat.")
 
 
 class MultiAgentResponse(BaseModel):

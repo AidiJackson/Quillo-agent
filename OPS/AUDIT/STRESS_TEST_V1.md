@@ -11,6 +11,8 @@ STRESS TEST v1 is an automatic, consequence-detected mode that activates when a 
 
 **Key Principle:** Free-form chat is preserved when consequence is NOT detected. Stress Test only activates for genuinely consequential prompts.
 
+> **Mode Toggle v1 Update (2026-01-18):** Stress Test only activates in **Work mode**. In Normal mode, consequence detection is bypassed entirely. See `MODE_TOGGLE_V1.md` for details.
+
 ## Core Behavior
 
 **Normal Mode (No Consequence Detected):**

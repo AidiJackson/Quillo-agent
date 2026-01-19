@@ -11,6 +11,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from './ui/dialog';
+import { ModeIndicator } from './ModeToggle';
+import { getStoredMode } from '@/lib/uorinMode';
 
 interface Message {
   id: string;
@@ -529,7 +531,7 @@ export function ChatScreen() {
     try {
       if (rawChatMode) {
         // RAW CHAT V1: Use /ask for real LLM output, no judgment/contract coupling
-        const askResult = await ask(userInput, 'demo');
+        const askResult = await ask(userInput, 'demo', getStoredMode());
 
         // Update intelligence status based on model
         setIntelligenceStatus(isOfflineMode(askResult.model) ? 'offline' : 'ai-powered');
@@ -665,7 +667,7 @@ export function ChatScreen() {
 
     try {
       // Call multi-agent chat with the user message
-      const multiAgentResult = await multiAgent(userText, 'demo');
+      const multiAgentResult = await multiAgent(userText, 'demo', undefined, getStoredMode());
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
@@ -811,7 +813,7 @@ export function ChatScreen() {
 
     try {
       // Call multi-agent chat
-      const multiAgentResult = await multiAgent(userInput, 'demo');
+      const multiAgentResult = await multiAgent(userInput, 'demo', undefined, getStoredMode());
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
@@ -936,6 +938,9 @@ export function ChatScreen() {
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Status Badges - compact on mobile */}
         <div className="px-3 py-2 sm:p-4 flex justify-end gap-1.5 sm:gap-2 flex-wrap shrink-0">
+          {/* Mode Indicator (v1) */}
+          <ModeIndicator />
+
           {/* Intelligence Status Badge */}
           <IntelligenceStatusBadge status={intelligenceStatus} />
 
@@ -1457,17 +1462,30 @@ export function ChatScreen() {
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
           <div className="max-w-4xl mx-auto space-y-2 sm:space-y-3">
-            {/* Input - mobile-optimized */}
-            <div className="flex gap-2">
-              <input
-                type="text"
+            {/* Input - mobile-optimized, multiline support */}
+            <div className="flex gap-2 items-end">
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !loading && handleSend()}
+                onKeyDown={(e) => {
+                  // Ctrl+Enter (Windows/Linux) or Cmd+Enter (macOS) to send
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !loading) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                  // Plain Enter inserts newline (default textarea behavior)
+                }}
                 placeholder="Message Uorin..."
                 disabled={loading}
-                className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 text-base bg-input-background border border-border rounded-[12px] sm:rounded-[16px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                rows={1}
+                className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 text-base bg-input-background border border-border rounded-[12px] sm:rounded-[16px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 resize-none min-h-[44px] max-h-[200px] overflow-y-auto"
                 style={{ fontSize: '16px' }} // Prevent iOS zoom on focus
+                onInput={(e) => {
+                  // Auto-resize textarea based on content
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = Math.min(target.scrollHeight, 200) + 'px';
+                }}
               />
               <button
                 onClick={handleSend}
@@ -1495,6 +1513,11 @@ export function ChatScreen() {
                 </div>
               </button>
             </div>
+
+            {/* Send tip - desktop only */}
+            <p className="hidden sm:block text-[10px] text-muted-foreground pl-1">
+              Tip: Ctrl/Cmd+Enter to send
+            </p>
 
             {/* Advanced Tools Toggle */}
             <div className="flex justify-between items-center">

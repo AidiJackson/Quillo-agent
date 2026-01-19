@@ -419,6 +419,27 @@ class TestMultiAgentTruncation:
             f"max_tokens default is {max_tokens_default}, should be >= 1000 to prevent truncation"
 
 
+class TestMultiAgentIntroMessage:
+    """Test intro message uses correct agent names."""
+
+    def test_intro_message_mentions_deepseek_not_grok(self):
+        """Test that intro message mentions DeepSeek, not Grok."""
+        from quillo_agent.services.multi_agent_chat import _generate_short_frame
+
+        # Get the intro message
+        intro = _generate_short_frame("Test question")
+
+        # Should mention DeepSeek
+        assert "DeepSeek" in intro, f"Intro should mention DeepSeek but got: {intro}"
+
+        # Should NOT mention Grok
+        assert "Grok" not in intro, f"Intro should not mention Grok but got: {intro}"
+
+        # Should also mention Claude and Gemini
+        assert "Claude" in intro, f"Intro should mention Claude but got: {intro}"
+        assert "Gemini" in intro, f"Intro should mention Gemini but got: {intro}"
+
+
 class TestMultiAgentPartialLive:
     """Test partial-live behavior where individual agents can fail independently."""
 

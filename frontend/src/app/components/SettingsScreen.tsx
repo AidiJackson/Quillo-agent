@@ -3,6 +3,7 @@ import { GlassCard } from './GlassCard';
 import { Zap, BarChart3, Sparkles, DollarSign, CheckCircle } from 'lucide-react';
 import { fetchUserPrefs, updateUserPrefs, UserPrefsOut } from '../../lib/quilloApi';
 import { JudgmentProfileSettings } from './JudgmentProfileSettings';
+import { ModeToggle } from './ModeToggle';
 
 export function SettingsScreen() {
   const [mode, setMode] = useState<'Fast' | 'Balanced' | 'Premium'>('Balanced');
@@ -86,6 +87,11 @@ export function SettingsScreen() {
             Configure how Uorin selects and uses AI models
           </p>
         </div>
+
+        {/* Uorin Mode Toggle v1 */}
+        <GlassCard className="p-6">
+          <ModeToggle />
+        </GlassCard>
 
         {/* Global Mode */}
         <GlassCard className="p-6">

@@ -13,6 +13,8 @@ UORIN Self-Explanation v1 provides lightweight, user-initiated transparency abou
 
 This system is designed to build user trust through selective, non-intrusive transparency without overwhelming the user or exposing internal implementation details.
 
+> **Mode Toggle v1 Update (2026-01-18):** Micro-disclosures now include a Mode line showing "Work" or "Normal" mode. See `MODE_TOGGLE_V1.md` for details.
+
 ---
 
 ## Features

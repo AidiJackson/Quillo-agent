@@ -128,7 +128,8 @@ def build_micro_disclosures(
     using_evidence: bool = False,
     stress_test_mode: bool = False,
     using_conversation_context: bool = False,
-    using_profile: bool = False
+    using_profile: bool = False,
+    mode: str = "work"
 ) -> str:
     """
     Build micro-disclosure lines to prepend to response.
@@ -138,17 +139,24 @@ def build_micro_disclosures(
         stress_test_mode: True if stress test mode is active
         using_conversation_context: True if conversation history is used
         using_profile: True if user profile/preferences are used
+        mode: Uorin mode ("work" or "normal")
 
     Returns:
         String with disclosure lines (empty string if no disclosures)
     """
     disclosures = []
 
+    # Mode disclosure (always show for transparency)
+    if mode == "work":
+        disclosures.append("Mode: Work (guardrails + evidence triggers + stress test)")
+    elif mode == "normal":
+        disclosures.append("Mode: Normal (free-form; no auto guardrails)")
+
     if using_evidence:
         disclosures.append("Evidence: on (sources + timestamps below)")
 
     if stress_test_mode:
-        disclosures.append("Mode: Stress Test (consequential decision detected)")
+        disclosures.append("Stress Test: active (consequential decision detected)")
 
     if using_conversation_context:
         disclosures.append("Context: using this conversation's history")

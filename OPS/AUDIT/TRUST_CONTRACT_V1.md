@@ -8,6 +8,8 @@
 
 The UORIN TRUST CONTRACT v1 transforms Uorin from a standard AI assistant into a trust-first judgment system. This document defines the enforceable backend behaviors that implement this trust contract.
 
+> **Mode Toggle v1 Update (2026-01-18):** Trust Contract behaviors only apply in **Work mode** (the default). In Normal mode, these guardrails are bypassed for free-form chat. See `MODE_TOGGLE_V1.md` for details.
+
 ## Core Principles
 
 1. **Evidence Default-On**: Auto-fetch external evidence for prompts containing factual or temporal claims

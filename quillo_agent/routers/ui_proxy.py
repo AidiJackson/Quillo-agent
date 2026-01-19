@@ -60,6 +60,7 @@ from ..self_explanation import (
     build_transparency_card,
     build_micro_disclosures
 )
+from ..mode import normalize_mode, is_work_mode, UORIN_MODE_WORK, UORIN_MODE_NORMAL
 
 
 # Rate limiter instance
@@ -472,7 +473,11 @@ async def ui_ask_quillopreneur(
     """
     UI proxy for Quillopreneur business advice with TRUST CONTRACT v1 enforcement.
 
-    TRUST CONTRACT BEHAVIORS:
+    MODE TOGGLE v1:
+    - Work mode (default): Full trust contract enforcement
+    - Normal mode: Free chat, no auto guardrails
+
+    TRUST CONTRACT BEHAVIORS (Work mode only):
     1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
     2. No assumptions: Asks clarifying questions if critical context is missing
     3. Evidence limitations: States clearly when evidence unavailable
@@ -481,7 +486,7 @@ async def ui_ask_quillopreneur(
 
     Args:
         request: FastAPI request (for rate limiting)
-        payload: AskRequest with text and optional user_id
+        payload: AskRequest with text, optional user_id, and optional mode
         db: Database session
         token: Validated UI token
 
@@ -489,7 +494,12 @@ async def ui_ask_quillopreneur(
         AskResponse with answer, model, and trace_id
     """
     import uuid
-    logger.info(f"UI POST /ask: user_id={payload.user_id}, trust_contract=v1")
+
+    # Normalize mode - defaults to "work" if not provided
+    effective_mode = normalize_mode(payload.mode)
+    work_mode = is_work_mode(effective_mode)
+
+    logger.info(f"UI POST /ask: user_id={payload.user_id}, mode={effective_mode}, trust_contract={'v1' if work_mode else 'disabled'}")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
@@ -536,30 +546,33 @@ async def ui_ask_quillopreneur(
             trace_id=trace_id
         )
 
-    # TRUST CONTRACT STEP 1: Check for missing assumptions
+    # TRUST CONTRACT STEP 1: Check for missing assumptions (WORK MODE ONLY)
     # Build context dict (for future: conversation history, attachments, etc.)
     context = {
         "has_previous_context": False,  # TODO: Check conversation storage
         "has_attachments": False
     }
 
-    ok_to_proceed, questions = enforce_no_assumptions(payload.text, context)
+    if work_mode:
+        ok_to_proceed, questions = enforce_no_assumptions(payload.text, context)
 
-    if not ok_to_proceed and questions:
-        # Critical context missing - return questions without calling LLM
-        logger.info(f"[{trace_id}] No-assumptions triggered: {len(questions)} questions")
-        questions_text = "I need a few details before I can help (no guessing):\n\n"
-        for i, question in enumerate(questions, 1):
-            questions_text += f"{i}. {question}\n"
+        if not ok_to_proceed and questions:
+            # Critical context missing - return questions without calling LLM
+            logger.info(f"[{trace_id}] No-assumptions triggered: {len(questions)} questions")
+            questions_text = "I need a few details before I can help (no guessing):\n\n"
+            for i, question in enumerate(questions, 1):
+                questions_text += f"{i}. {question}\n"
 
-        return AskResponse(
-            answer=questions_text.strip(),
-            model="trust-contract-v1",
-            trace_id=trace_id
-        )
+            return AskResponse(
+                answer=questions_text.strip(),
+                model="trust-contract-v1",
+                trace_id=trace_id
+            )
+    else:
+        logger.info(f"[{trace_id}] Normal mode - skipping no-assumptions check")
 
-    # TRUST CONTRACT STEP 2: Check if evidence is needed
-    needs_evidence = classify_prompt_needs_evidence(payload.text)
+    # TRUST CONTRACT STEP 2: Check if evidence is needed (WORK MODE ONLY)
+    needs_evidence = work_mode and classify_prompt_needs_evidence(payload.text)
     evidence_block = None
     evidence_note = None
 
@@ -604,7 +617,8 @@ async def ui_ask_quillopreneur(
         using_evidence=bool(evidence_block),  # True if evidence was successfully fetched
         stress_test_mode=False,  # /ask doesn't use stress test mode
         using_conversation_context=False,  # TODO: Enable when conversation storage implemented
-        using_profile=False  # /ask doesn't use profile yet
+        using_profile=False,  # /ask doesn't use profile yet
+        mode=effective_mode  # Mode Toggle v1
     )
 
     if micro_disclosures:
@@ -765,14 +779,18 @@ async def ui_multi_agent_chat(
     """
     UI proxy for multi-agent chat with TRUST CONTRACT v1 + STRESS TEST v1 enforcement.
 
-    TRUST CONTRACT BEHAVIORS:
+    MODE TOGGLE v1:
+    - Work mode (default): Full trust contract + stress test enforcement
+    - Normal mode: Free chat, no auto guardrails or stress test
+
+    TRUST CONTRACT BEHAVIORS (Work mode only):
     1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
     2. No assumptions: Asks clarifying questions if critical context is missing
     3. Structured outputs: Each agent provides Evidence/Interpretation/Recommendation
     4. Meaningful disagreements: Synthesis preserves substantive differences
     5. Evidence limitations: States clearly when evidence unavailable
 
-    STRESS TEST v1 BEHAVIORS (automatic when consequence detected):
+    STRESS TEST v1 BEHAVIORS (Work mode only, automatic when consequence detected):
     6. Consequence detection: Auto-detects decision-making/high-stakes prompts
     7. Lens assignments: Risk/Relationship/Strategy/Execution lenses
     8. Stricter synthesis: Top risks, disagreements, alternatives, execution tool
@@ -781,14 +799,19 @@ async def ui_multi_agent_chat(
 
     Args:
         request: FastAPI request (for rate limiting)
-        payload: MultiAgentRequest with text, user_id, agents
+        payload: MultiAgentRequest with text, user_id, agents, and optional mode
         token: Validated UI token
 
     Returns:
         MultiAgentResponse with messages, provider, trace_id
     """
     import uuid
-    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, trust_contract=v1, stress_test=v1")
+
+    # Normalize mode - defaults to "work" if not provided
+    effective_mode = normalize_mode(payload.mode)
+    work_mode = is_work_mode(effective_mode)
+
+    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, mode={effective_mode}, trust_contract={'v1' if work_mode else 'disabled'}, stress_test={'v1' if work_mode else 'disabled'}")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
@@ -849,40 +872,43 @@ async def ui_multi_agent_chat(
             peers_unavailable=False
         )
 
-    # TRUST CONTRACT STEP 1: Check for missing assumptions
+    # TRUST CONTRACT STEP 1: Check for missing assumptions (WORK MODE ONLY)
     context = {
         "has_previous_context": False,
         "has_attachments": False
     }
 
-    ok_to_proceed, questions = enforce_no_assumptions(payload.text, context)
+    if work_mode:
+        ok_to_proceed, questions = enforce_no_assumptions(payload.text, context)
 
-    if not ok_to_proceed and questions:
-        # Return questions as a single message from Quillo
-        logger.info(f"[{trace_id}] No-assumptions triggered in multi-agent: {len(questions)} questions")
-        questions_text = "I need a few details before we can provide multi-agent perspectives (no guessing):\n\n"
-        for i, question in enumerate(questions, 1):
-            questions_text += f"{i}. {question}\n"
+        if not ok_to_proceed and questions:
+            # Return questions as a single message from Quillo
+            logger.info(f"[{trace_id}] No-assumptions triggered in multi-agent: {len(questions)} questions")
+            questions_text = "I need a few details before we can provide multi-agent perspectives (no guessing):\n\n"
+            for i, question in enumerate(questions, 1):
+                questions_text += f"{i}. {question}\n"
 
-        messages = [MultiAgentMessage(
-            role="assistant",
-            agent="quillo",
-            content=questions_text.strip(),
-            model_id=None,
-            live=True,
-            unavailable_reason=None
-        )]
+            messages = [MultiAgentMessage(
+                role="assistant",
+                agent="quillo",
+                content=questions_text.strip(),
+                model_id=None,
+                live=True,
+                unavailable_reason=None
+            )]
 
-        return MultiAgentResponse(
-            messages=messages,
-            provider="trust-contract-v1",
-            trace_id=trace_id,
-            fallback_reason=None,
-            peers_unavailable=False
-        )
+            return MultiAgentResponse(
+                messages=messages,
+                provider="trust-contract-v1",
+                trace_id=trace_id,
+                fallback_reason=None,
+                peers_unavailable=False
+            )
+    else:
+        logger.info(f"[{trace_id}] Normal mode - skipping no-assumptions check in multi-agent")
 
-    # TRUST CONTRACT STEP 2: Check if evidence is needed
-    needs_evidence = classify_prompt_needs_evidence(payload.text)
+    # TRUST CONTRACT STEP 2: Check if evidence is needed (WORK MODE ONLY)
+    needs_evidence = work_mode and classify_prompt_needs_evidence(payload.text)
     evidence_context = None
 
     if needs_evidence:
@@ -905,12 +931,14 @@ async def ui_multi_agent_chat(
             evidence_context = "Evidence temporarily unavailable. Responses may have limited factual certainty."
             logger.error(f"[{trace_id}] Evidence fetch error in multi-agent: {e}")
 
-    # STRESS TEST v1: Check if consequence/decision detected
-    stress_test_mode = detect_consequence(payload.text)
+    # STRESS TEST v1: Check if consequence/decision detected (WORK MODE ONLY)
+    stress_test_mode = work_mode and detect_consequence(payload.text)
     if stress_test_mode:
         logger.info(f"[{trace_id}] STRESS TEST v1 activated - consequence detected")
+    elif work_mode:
+        logger.info(f"[{trace_id}] Work mode multi-agent - no consequence detected")
     else:
-        logger.info(f"[{trace_id}] Normal multi-agent mode - no consequence detected")
+        logger.info(f"[{trace_id}] Normal mode multi-agent - stress test disabled")
 
     # Run multi-agent chat with evidence context and stress test mode
     messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
@@ -930,7 +958,8 @@ async def ui_multi_agent_chat(
         using_evidence=bool(evidence_context and "Evidence (from web sources):" in evidence_context),
         stress_test_mode=stress_test_mode,
         using_conversation_context=False,  # TODO: Enable when conversation storage implemented
-        using_profile=False  # Not yet used in multi-agent
+        using_profile=False,  # Not yet used in multi-agent
+        mode=effective_mode  # Mode Toggle v1
     )
 
     if micro_disclosures and messages:

@@ -176,7 +176,7 @@ def test_transparency_card_no_prompt_leak():
 # ============================================================================
 
 def test_micro_disclosures_all_false():
-    """Test that no disclosures appear when all flags are false"""
+    """Test that mode disclosure still appears when all other flags are false"""
     disclosures = build_micro_disclosures(
         using_evidence=False,
         stress_test_mode=False,
@@ -184,7 +184,10 @@ def test_micro_disclosures_all_false():
         using_profile=False
     )
 
-    assert disclosures == ""
+    # Mode disclosure is always present (Mode Toggle v1)
+    assert "Mode: Work" in disclosures
+    assert "Evidence:" not in disclosures
+    assert "Stress Test:" not in disclosures
 
 
 def test_micro_disclosures_evidence_only():
@@ -197,7 +200,7 @@ def test_micro_disclosures_evidence_only():
     )
 
     assert "Evidence: on (sources + timestamps below)" in disclosures
-    assert "Mode:" not in disclosures
+    assert "Mode: Work" in disclosures  # Mode always present (Mode Toggle v1)
     assert "Context:" not in disclosures
     assert "Profile:" not in disclosures
 
@@ -211,7 +214,9 @@ def test_micro_disclosures_stress_test_only():
         using_profile=False
     )
 
-    assert "Mode: Stress Test (consequential decision detected)" in disclosures
+    # Mode Toggle v1: Mode always shows, Stress Test is separate line
+    assert "Mode: Work" in disclosures
+    assert "Stress Test: active (consequential decision detected)" in disclosures
     assert "Evidence:" not in disclosures
 
 
@@ -226,11 +231,12 @@ def test_micro_disclosures_all_true():
 
     lines = disclosures.strip().split("\n")
 
-    # Check order
-    assert lines[0] == "Evidence: on (sources + timestamps below)"
-    assert lines[1] == "Mode: Stress Test (consequential decision detected)"
-    assert lines[2] == "Context: using this conversation's history"
-    assert lines[3] == "Profile: using your saved preferences (view/edit anytime)"
+    # Check order (Mode Toggle v1: mode first, then evidence, stress test, context, profile)
+    assert lines[0] == "Mode: Work (guardrails + evidence triggers + stress test)"
+    assert lines[1] == "Evidence: on (sources + timestamps below)"
+    assert lines[2] == "Stress Test: active (consequential decision detected)"
+    assert lines[3] == "Context: using this conversation's history"
+    assert lines[4] == "Profile: using your saved preferences (view/edit anytime)"
 
     # Check blank line separator
     assert disclosures.endswith("\n\n")
@@ -245,8 +251,8 @@ def test_micro_disclosures_formatting():
         using_profile=False
     )
 
-    # Should have exactly 2 lines + blank line separator
-    assert disclosures.count("\n") == 3  # 2 disclosure lines + 1 blank line
+    # Mode Toggle v1: Mode + Evidence + Stress Test = 3 lines + blank line separator
+    assert disclosures.count("\n") == 4  # 3 disclosure lines + 1 blank line
 
 
 # ============================================================================
@@ -434,8 +440,9 @@ def test_multi_agent_stress_test_disclosure(mock_no_assumptions, mock_evidence, 
         synthesis_msg = next((m for m in data["messages"] if m["agent"] == "quillo"), None)
         assert synthesis_msg is not None
 
-        # Check that stress test disclosure appears
-        assert "Mode: Stress Test (consequential decision detected)" in synthesis_msg["content"]
+        # Check that stress test disclosure appears (Mode Toggle v1 format)
+        assert "Mode: Work" in synthesis_msg["content"]
+        assert "Stress Test: active (consequential decision detected)" in synthesis_msg["content"]
 
 
 @patch('quillo_agent.routers.ui_proxy.run_multi_agent_chat')

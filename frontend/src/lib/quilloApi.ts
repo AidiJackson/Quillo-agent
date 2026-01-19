@@ -56,6 +56,7 @@ export interface PlanResponse {
 export interface AskRequest {
   text: string;
   user_id?: string;
+  mode?: string; // "work" or "normal"
 }
 
 export interface AskResponse {
@@ -231,10 +232,11 @@ export async function plan(
 /**
  * Ask Quillopreneur for business advice
  */
-export async function ask(text: string, userId?: string): Promise<AskResponse> {
+export async function ask(text: string, userId?: string, mode?: string): Promise<AskResponse> {
   const request: AskRequest = {
     text,
     user_id: userId,
+    mode,
   };
 
   const headers: Record<string, string> = {
@@ -356,6 +358,7 @@ export interface MultiAgentRequest {
   text: string;
   user_id?: string;
   agents?: string[];
+  mode?: string; // "work" or "normal"
 }
 
 export interface MultiAgentResponse {
@@ -373,12 +376,14 @@ export interface MultiAgentResponse {
 export async function multiAgent(
   text: string,
   userId?: string,
-  agents?: string[]
+  agents?: string[],
+  mode?: string
 ): Promise<MultiAgentResponse> {
   const request: MultiAgentRequest = {
     text,
     user_id: userId,
     agents,
+    mode,
   };
 
   const headers: Record<string, string> = {

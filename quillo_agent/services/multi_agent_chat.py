@@ -443,7 +443,7 @@ async def _generate_openrouter_transcript(
 def _generate_short_frame(text: str) -> str:
     """Generate a short framing message for Primary."""
     # Keep it simple for v0.1
-    return "Got it. Let me bring in a few perspectives on this. We'll hear from Claude, Grok, and Gemini."
+    return "Got it. Let me bring in a few perspectives on this. We'll hear from Claude, DeepSeek, and Gemini."
 
 
 async def _call_openrouter_safe(
