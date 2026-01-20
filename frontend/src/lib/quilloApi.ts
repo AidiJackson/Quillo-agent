@@ -56,6 +56,7 @@ export interface PlanResponse {
 export interface AskRequest {
   text: string;
   user_id?: string;
+  mode?: 'normal' | 'work';
 }
 
 export interface AskResponse {
@@ -230,11 +231,15 @@ export async function plan(
 
 /**
  * Ask Quillopreneur for business advice
+ * @param text - The question to ask
+ * @param userId - Optional user identifier
+ * @param mode - 'normal' (raw chat) or 'work' (judgment + evidence + guardrails)
  */
-export async function ask(text: string, userId?: string): Promise<AskResponse> {
+export async function ask(text: string, userId?: string, mode?: 'normal' | 'work'): Promise<AskResponse> {
   const request: AskRequest = {
     text,
     user_id: userId,
+    mode: mode || 'normal',
   };
 
   const headers: Record<string, string> = {
@@ -356,6 +361,7 @@ export interface MultiAgentRequest {
   text: string;
   user_id?: string;
   agents?: string[];
+  mode?: 'normal' | 'work';
 }
 
 export interface MultiAgentResponse {
@@ -369,16 +375,22 @@ export interface MultiAgentResponse {
 /**
  * Multi-agent chat (v0)
  * Get perspectives from multiple agents in one conversation
+ * @param text - The question to ask
+ * @param userId - Optional user identifier
+ * @param agents - Optional list of agents to include
+ * @param mode - 'normal' (raw chat) or 'work' (judgment + evidence + guardrails)
  */
 export async function multiAgent(
   text: string,
   userId?: string,
-  agents?: string[]
+  agents?: string[],
+  mode?: 'normal' | 'work'
 ): Promise<MultiAgentResponse> {
   const request: MultiAgentRequest = {
     text,
     user_id: userId,
     agents,
+    mode: mode || 'normal',
   };
 
   const headers: Record<string, string> = {

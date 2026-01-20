@@ -70,6 +70,7 @@ class AskRequest(BaseModel):
     """Request for Quillopreneur business advice"""
     text: str = Field(..., description="Business question or topic")
     user_id: Optional[str] = Field(None, description="User identifier for personalization")
+    mode: str = Field("normal", description="Uorin mode: 'normal' (raw chat) or 'work' (judgment + evidence + guardrails)")
 
 
 class AskResponse(BaseModel):
@@ -144,6 +145,7 @@ class MultiAgentRequest(BaseModel):
     text: str = Field(..., description="User input text")
     user_id: Optional[str] = Field(None, description="User identifier")
     agents: Optional[List[str]] = Field(None, description="List of agents to include (default: ['primary', 'claude', 'grok'])")
+    mode: str = Field("normal", description="Uorin mode: 'normal' (raw chat) or 'work' (judgment + evidence + guardrails)")
 
 
 class MultiAgentResponse(BaseModel):

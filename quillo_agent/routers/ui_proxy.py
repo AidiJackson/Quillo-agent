@@ -470,9 +470,13 @@ async def ui_ask_quillopreneur(
     token: str = Depends(verify_ui_token)
 ) -> AskResponse:
     """
-    UI proxy for Quillopreneur business advice with TRUST CONTRACT v1 enforcement.
+    UI proxy for Quillopreneur business advice.
 
-    TRUST CONTRACT BEHAVIORS:
+    MODE BEHAVIOR:
+    - "normal": Raw chat (no evidence, no trust contract, no scaffolding) - like ChatGPT/Claude
+    - "work": TRUST CONTRACT v1 enforcement (evidence, clarifying questions, structured output)
+
+    TRUST CONTRACT BEHAVIORS (work mode only):
     1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
     2. No assumptions: Asks clarifying questions if critical context is missing
     3. Evidence limitations: States clearly when evidence unavailable
@@ -481,7 +485,7 @@ async def ui_ask_quillopreneur(
 
     Args:
         request: FastAPI request (for rate limiting)
-        payload: AskRequest with text and optional user_id
+        payload: AskRequest with text, optional user_id, and mode
         db: Database session
         token: Validated UI token
 
@@ -489,10 +493,40 @@ async def ui_ask_quillopreneur(
         AskResponse with answer, model, and trace_id
     """
     import uuid
-    logger.info(f"UI POST /ask: user_id={payload.user_id}, trust_contract=v1")
+
+    # Resolve mode (default to "normal" if not specified or invalid)
+    resolved_mode = payload.mode.lower() if payload.mode else "normal"
+    if resolved_mode not in ("normal", "work"):
+        resolved_mode = "normal"
+
+    logger.info(f"UI POST /ask: user_id={payload.user_id}, mode={resolved_mode}")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
+
+    # ========================================================================
+    # NORMAL MODE: Early exit - raw LLM response, no scaffolding
+    # ========================================================================
+    if resolved_mode == "normal":
+        logger.debug(f"[{trace_id}] NORMAL MODE: bypassing trust contract, evidence, and scaffolding")
+
+        # Get raw business advice
+        answer, model = await advice.answer_business_question(
+            text=payload.text,
+            user_id=payload.user_id,
+            db=db
+        )
+
+        return AskResponse(
+            answer=answer,
+            model=model,
+            trace_id=trace_id
+        )
+
+    # ========================================================================
+    # WORK MODE: Full trust contract enforcement
+    # ========================================================================
+    logger.info(f"[{trace_id}] WORK MODE: trust_contract=v1, evidence=auto, scaffolding=on")
 
     # SELF-EXPLANATION v1: Check for transparency query (short-circuit before any LLM calls)
     if is_transparency_query(payload.text):
@@ -763,16 +797,20 @@ async def ui_multi_agent_chat(
     token: str = Depends(verify_ui_token)
 ) -> MultiAgentResponse:
     """
-    UI proxy for multi-agent chat with TRUST CONTRACT v1 + STRESS TEST v1 enforcement.
+    UI proxy for multi-agent chat.
 
-    TRUST CONTRACT BEHAVIORS:
+    MODE BEHAVIOR:
+    - "normal": Raw multi-agent chat (no evidence, no trust contract, no structured output)
+    - "work": TRUST CONTRACT v1 + STRESS TEST v1 enforcement
+
+    TRUST CONTRACT BEHAVIORS (work mode only):
     1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
     2. No assumptions: Asks clarifying questions if critical context is missing
     3. Structured outputs: Each agent provides Evidence/Interpretation/Recommendation
     4. Meaningful disagreements: Synthesis preserves substantive differences
     5. Evidence limitations: States clearly when evidence unavailable
 
-    STRESS TEST v1 BEHAVIORS (automatic when consequence detected):
+    STRESS TEST v1 BEHAVIORS (work mode, automatic when consequence detected):
     6. Consequence detection: Auto-detects decision-making/high-stakes prompts
     7. Lens assignments: Risk/Relationship/Strategy/Execution lenses
     8. Stricter synthesis: Top risks, disagreements, alternatives, execution tool
@@ -781,17 +819,56 @@ async def ui_multi_agent_chat(
 
     Args:
         request: FastAPI request (for rate limiting)
-        payload: MultiAgentRequest with text, user_id, agents
+        payload: MultiAgentRequest with text, user_id, agents, and mode
         token: Validated UI token
 
     Returns:
         MultiAgentResponse with messages, provider, trace_id
     """
     import uuid
-    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, trust_contract=v1, stress_test=v1")
+
+    # Resolve mode (default to "normal" if not specified or invalid)
+    resolved_mode = payload.mode.lower() if payload.mode else "normal"
+    if resolved_mode not in ("normal", "work"):
+        resolved_mode = "normal"
+
+    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, mode={resolved_mode}")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
+
+    # ========================================================================
+    # NORMAL MODE: Raw multi-agent chat, no scaffolding
+    # ========================================================================
+    if resolved_mode == "normal":
+        logger.debug(f"[{trace_id}] NORMAL MODE: bypassing trust contract, evidence, and structured output")
+
+        # Run multi-agent chat without evidence context and stress test mode
+        messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
+            text=payload.text,
+            user_id=payload.user_id,
+            agents=payload.agents,
+            trace_id=trace_id,
+            evidence_context=None,  # No evidence in normal mode
+            stress_test_mode=False,  # No stress test in normal mode
+            normal_mode=True  # Enable normal mode (no scaffolding)
+        )
+
+        # Convert to MultiAgentMessage models
+        messages = [MultiAgentMessage(**msg) for msg in messages_data]
+
+        return MultiAgentResponse(
+            messages=messages,
+            provider=provider,
+            trace_id=trace_id,
+            fallback_reason=fallback_reason,
+            peers_unavailable=peers_unavailable
+        )
+
+    # ========================================================================
+    # WORK MODE: Full trust contract + stress test enforcement
+    # ========================================================================
+    logger.info(f"[{trace_id}] WORK MODE: trust_contract=v1, stress_test=v1")
 
     # SELF-EXPLANATION v1: Check for transparency query (short-circuit before any LLM calls)
     if is_transparency_query(payload.text):
