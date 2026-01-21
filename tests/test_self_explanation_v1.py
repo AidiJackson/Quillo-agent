@@ -352,7 +352,7 @@ def test_ask_micro_disclosure_with_evidence(mock_evidence, mock_answer):
 
 @patch('quillo_agent.routers.ui_proxy.run_multi_agent_chat')
 def test_multi_agent_transparency_query_short_circuit(mock_run):
-    """Test that transparency query in /multi-agent returns card without LLM call"""
+    """Test that transparency query in /multi-agent returns card without LLM call (work mode)"""
     with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
         response = client.post(
             "/ui/api/multi-agent",
@@ -360,7 +360,8 @@ def test_multi_agent_transparency_query_short_circuit(mock_run):
             json={
                 "text": "What context are you using?",
                 "user_id": "test-user",
-                "agents": ["claude", "gemini"]
+                "agents": ["claude", "gemini"],
+                "mode": "work"  # Work mode required for transparency query handling
             }
         )
 
@@ -423,7 +424,8 @@ def test_multi_agent_stress_test_disclosure(mock_no_assumptions, mock_evidence, 
             json={
                 "text": "Should I fire this underperforming employee?",
                 "user_id": "test-user",
-                "agents": ["claude", "gemini"]
+                "agents": ["claude", "gemini"],
+                "mode": "work"  # Work mode required for stress test disclosure
             }
         )
 
@@ -530,7 +532,8 @@ def test_multi_agent_evidence_disclosure(mock_evidence, mock_run):
                 json={
                     "text": "What's the latest news about AI?",
                     "user_id": "test-user",
-                    "agents": ["claude", "gemini"]
+                    "agents": ["claude", "gemini"],
+                    "mode": "work"  # Work mode required for evidence disclosure
                 }
             )
 

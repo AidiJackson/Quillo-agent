@@ -356,6 +356,7 @@ export interface MultiAgentRequest {
   text: string;
   user_id?: string;
   agents?: string[];
+  mode?: 'normal' | 'work';
 }
 
 export interface MultiAgentResponse {
@@ -369,16 +370,23 @@ export interface MultiAgentResponse {
 /**
  * Multi-agent chat (v0)
  * Get perspectives from multiple agents in one conversation
+ *
+ * @param text - User's input text
+ * @param userId - Optional user identifier
+ * @param agents - Optional list of agents to include
+ * @param mode - Mode: 'normal' for raw peer replies (no synthesis), 'work' for structured outputs with synthesis
  */
 export async function multiAgent(
   text: string,
   userId?: string,
-  agents?: string[]
+  agents?: string[],
+  mode?: 'normal' | 'work'
 ): Promise<MultiAgentResponse> {
   const request: MultiAgentRequest = {
     text,
     user_id: userId,
     agents,
+    mode: mode || 'normal',
   };
 
   const headers: Record<string, string> = {

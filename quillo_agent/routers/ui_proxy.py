@@ -763,35 +763,63 @@ async def ui_multi_agent_chat(
     token: str = Depends(verify_ui_token)
 ) -> MultiAgentResponse:
     """
-    UI proxy for multi-agent chat with TRUST CONTRACT v1 + STRESS TEST v1 enforcement.
+    UI proxy for multi-agent chat with mode-based behavior.
 
-    TRUST CONTRACT BEHAVIORS:
-    1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
-    2. No assumptions: Asks clarifying questions if critical context is missing
-    3. Structured outputs: Each agent provides Evidence/Interpretation/Recommendation
-    4. Meaningful disagreements: Synthesis preserves substantive differences
-    5. Evidence limitations: States clearly when evidence unavailable
-
-    STRESS TEST v1 BEHAVIORS (automatic when consequence detected):
-    6. Consequence detection: Auto-detects decision-making/high-stakes prompts
-    7. Lens assignments: Risk/Relationship/Strategy/Execution lenses
-    8. Stricter synthesis: Top risks, disagreements, alternatives, execution tool
+    MODE BEHAVIORS:
+    - normal: Raw peer replies from Claude/DeepSeek/Gemini with NO synthesis, NO evidence fetch,
+              NO trust contract checks, NO stress test. Just natural model responses.
+    - work: Full TRUST CONTRACT v1 + STRESS TEST v1 enforcement with structured outputs and synthesis.
 
     Rate limited to 30 requests per minute per IP.
 
     Args:
         request: FastAPI request (for rate limiting)
-        payload: MultiAgentRequest with text, user_id, agents
+        payload: MultiAgentRequest with text, user_id, agents, mode
         token: Validated UI token
 
     Returns:
         MultiAgentResponse with messages, provider, trace_id
     """
     import uuid
-    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, trust_contract=v1, stress_test=v1")
-
-    # Generate trace ID
     trace_id = str(uuid.uuid4())
+
+    # Parse mode (case-insensitive, default to "normal")
+    mode = (payload.mode or "normal").lower().strip()
+    if mode not in ("normal", "work"):
+        mode = "normal"
+
+    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, mode={mode}, trace_id={trace_id}")
+
+    # ============================================================
+    # NORMAL MODE: Raw peer replies, no synthesis, no scaffolding
+    # ============================================================
+    if mode == "normal":
+        # Run multi-agent chat in normal mode (bypasses all work-mode behaviors)
+        messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
+            text=payload.text,
+            user_id=payload.user_id,
+            agents=payload.agents,
+            trace_id=trace_id,
+            evidence_context=None,  # No auto-evidence in normal mode
+            stress_test_mode=False,  # No stress test in normal mode
+            normal_mode=True  # Signal to skip synthesis
+        )
+
+        # Convert to MultiAgentMessage models
+        messages = [MultiAgentMessage(**msg) for msg in messages_data]
+
+        return MultiAgentResponse(
+            messages=messages,
+            provider=provider,
+            trace_id=trace_id,
+            fallback_reason=fallback_reason,
+            peers_unavailable=peers_unavailable
+        )
+
+    # ============================================================
+    # WORK MODE: Full trust contract + stress test + synthesis
+    # ============================================================
+    logger.info(f"[{trace_id}] Work mode: trust_contract=v1, stress_test=v1")
 
     # SELF-EXPLANATION v1: Check for transparency query (short-circuit before any LLM calls)
     if is_transparency_query(payload.text):
@@ -912,14 +940,15 @@ async def ui_multi_agent_chat(
     else:
         logger.info(f"[{trace_id}] Normal multi-agent mode - no consequence detected")
 
-    # Run multi-agent chat with evidence context and stress test mode
+    # Run multi-agent chat with evidence context and stress test mode (work mode = with synthesis)
     messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
         text=payload.text,
         user_id=payload.user_id,
         agents=payload.agents,
         trace_id=trace_id,
         evidence_context=evidence_context,  # Pass evidence to multi-agent
-        stress_test_mode=stress_test_mode  # Pass stress test flag
+        stress_test_mode=stress_test_mode,  # Pass stress test flag
+        normal_mode=False  # Work mode: include synthesis
     )
 
     # Convert to MultiAgentMessage models

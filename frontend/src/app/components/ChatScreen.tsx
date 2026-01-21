@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle, Database, RefreshCw } from 'lucide-react';
 import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, fetchEvidence, createTaskIntent, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, MultiAgentMessage, AskResponse, ConfigResponse, EvidenceResponse, TaskIntentOut } from '@/lib/quilloApi';
+import { getUorinMode } from '../../lib/uorinMode';
 import {
   Dialog,
   DialogContent,
@@ -665,7 +666,7 @@ export function ChatScreen() {
 
     try {
       // Call multi-agent chat with the user message
-      const multiAgentResult = await multiAgent(userText, 'demo');
+      const multiAgentResult = await multiAgent(userText, 'demo', undefined, getUorinMode());
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
@@ -811,7 +812,7 @@ export function ChatScreen() {
 
     try {
       // Call multi-agent chat
-      const multiAgentResult = await multiAgent(userInput, 'demo');
+      const multiAgentResult = await multiAgent(userInput, 'demo', undefined, getUorinMode());
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {

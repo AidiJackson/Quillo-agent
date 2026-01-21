@@ -76,7 +76,7 @@ class TestMultiAgentOfflineMode:
     """Test offline mode (no OpenRouter key)."""
 
     def test_offline_returns_template_transcript(self):
-        """Test that offline mode returns template transcript"""
+        """Test that offline mode returns template transcript (work mode for synthesis)"""
         with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
             with patch.object(settings, 'openrouter_api_key', ''):
                 response = client.post(
@@ -84,7 +84,8 @@ class TestMultiAgentOfflineMode:
                     headers={"X-UI-Token": TEST_UI_TOKEN},
                     json={
                         "text": "Can I get a second opinion on this micro-SaaS acquisition deal?",
-                        "user_id": "test-user"
+                        "user_id": "test-user",
+                        "mode": "work"  # Explicitly request work mode for synthesis
                     }
                 )
                 assert response.status_code == 200
@@ -100,7 +101,7 @@ class TestMultiAgentOfflineMode:
                 assert data["provider"] == "template"
                 assert data["fallback_reason"] == "openrouter_key_missing"
 
-                # Should have 5 messages (Primary/Claude/DeepSeek/Gemini/Primary)
+                # Should have 5 messages (Primary/Claude/DeepSeek/Gemini/Primary) in work mode
                 assert len(data["messages"]) == 5
 
                 # Check message structure
@@ -142,7 +143,7 @@ class TestMultiAgentOnlineMode:
     """Test online mode with OpenRouter."""
 
     def test_online_with_openrouter_mock(self):
-        """Test that online mode calls OpenRouter correctly"""
+        """Test that online mode calls OpenRouter correctly (work mode for synthesis)"""
         from unittest.mock import MagicMock
 
         # Mock OpenRouter responses
@@ -188,7 +189,7 @@ class TestMultiAgentOnlineMode:
                     response = client.post(
                         "/ui/api/multi-agent",
                         headers={"X-UI-Token": TEST_UI_TOKEN},
-                        json={"text": "Test question", "user_id": "test-user"}
+                        json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                     )
                     assert response.status_code == 200
                     data = response.json()
@@ -197,7 +198,7 @@ class TestMultiAgentOnlineMode:
                     assert data["provider"] == "openrouter"
                     assert data["fallback_reason"] is None
 
-                    # Should have 5 messages
+                    # Should have 5 messages in work mode
                     assert len(data["messages"]) == 5
 
                     # Check agents
@@ -205,7 +206,7 @@ class TestMultiAgentOnlineMode:
                     assert agents == ["quillo", "claude", "deepseek", "gemini", "quillo"]
 
     def test_online_all_peers_fail_partial_live(self):
-        """Test that when all peer agents fail, we get partial-live with peers_unavailable=True"""
+        """Test that when all peer agents fail, we get partial-live with peers_unavailable=True (work mode)"""
         async def mock_post_error(*args, **kwargs):
             """Mock httpx.AsyncClient.post that raises error for all OpenRouter calls"""
             raise httpx.HTTPError("API error")
@@ -216,7 +217,7 @@ class TestMultiAgentOnlineMode:
                     response = client.post(
                         "/ui/api/multi-agent",
                         headers={"X-UI-Token": TEST_UI_TOKEN},
-                        json={"text": "Test question", "user_id": "test-user"}
+                        json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                     )
                     assert response.status_code == 200
                     data = response.json()
@@ -226,7 +227,7 @@ class TestMultiAgentOnlineMode:
                     assert data["provider"] == "openrouter"
                     assert data["peers_unavailable"] == True
                     assert data["fallback_reason"] is None
-                    assert len(data["messages"]) == 5
+                    assert len(data["messages"]) == 5  # Work mode has 5 messages including synthesis
 
                     # All peer agents should be unavailable
                     for msg in data["messages"]:
@@ -287,18 +288,18 @@ class TestMultiAgentResponseStructure:
                     pytest.fail("trace_id is not a valid UUID")
 
     def test_messages_in_correct_order(self):
-        """Test that messages are in correct order"""
+        """Test that messages are in correct order (work mode for synthesis)"""
         with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
             with patch.object(settings, 'openrouter_api_key', ''):
                 response = client.post(
                     "/ui/api/multi-agent",
                     headers={"X-UI-Token": TEST_UI_TOKEN},
-                    json={"text": "Test question", "user_id": "test-user"}
+                    json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                 )
                 assert response.status_code == 200
                 data = response.json()
 
-                # Should be: Primary -> Claude -> DeepSeek -> Gemini -> Primary
+                # Should be: Primary -> Claude -> DeepSeek -> Gemini -> Primary (in work mode)
                 agents = [msg["agent"] for msg in data["messages"]]
                 assert agents[0] == "quillo"  # Primary frames
                 assert agents[1] == "claude"  # Claude perspective
@@ -307,18 +308,18 @@ class TestMultiAgentResponseStructure:
                 assert agents[4] == "quillo"  # Primary synthesizes
 
     def test_optional_agents_parameter(self):
-        """Test that agents parameter is optional"""
+        """Test that agents parameter is optional (work mode for 5 messages)"""
         with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
             with patch.object(settings, 'openrouter_api_key', ''):
-                # Without agents parameter
+                # Without agents parameter, with work mode
                 response = client.post(
                     "/ui/api/multi-agent",
                     headers={"X-UI-Token": TEST_UI_TOKEN},
-                    json={"text": "Test question"}
+                    json={"text": "Test question", "mode": "work"}
                 )
                 assert response.status_code == 200
                 data = response.json()
-                assert len(data["messages"]) == 5
+                assert len(data["messages"]) == 5  # Work mode has 5 messages
 
 
 class TestMultiAgentDevBypass:
