@@ -143,7 +143,8 @@ class MultiAgentRequest(BaseModel):
     """Request for multi-agent chat"""
     text: str = Field(..., description="User input text")
     user_id: Optional[str] = Field(None, description="User identifier")
-    agents: Optional[List[str]] = Field(None, description="List of agents to include (default: ['primary', 'claude', 'grok'])")
+    agents: Optional[List[str]] = Field(None, description="List of agents to include (default: ['primary', 'claude', 'deepseek'])")
+    mode: Optional[str] = Field("normal", description="Chat mode: 'normal' (raw peers only) or 'work' (trust contract + synthesis)")
 
 
 class MultiAgentResponse(BaseModel):
