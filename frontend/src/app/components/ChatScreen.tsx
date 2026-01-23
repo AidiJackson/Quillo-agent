@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Send, ThumbsUp, ThumbsDown, Sparkles, Brain, Play, CheckCircle, XCircle, ChevronDown, ChevronUp, Zap, WifiOff, Settings, AlertCircle, Database, RefreshCw } from 'lucide-react';
 import { health, route, plan, judgment, execute, authStatus as fetchAuthStatus, multiAgent, ask, config, fetchEvidence, createTaskIntent, RouteResponse, PlanResponse, JudgmentResponse, ExecuteResponse, MultiAgentResponse, MultiAgentMessage, AskResponse, ConfigResponse, EvidenceResponse, TaskIntentOut } from '@/lib/quilloApi';
+import { getUorinMode } from '@/lib/uorinMode';
 import {
   Dialog,
   DialogContent,
@@ -665,15 +666,12 @@ export function ChatScreen() {
 
     try {
       // Call multi-agent chat with the user message
-      const multiAgentResult = await multiAgent(userText, 'demo');
+      const multiAgentResult = await multiAgent(userText, 'demo', undefined, getUorinMode());
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
-        // Determine if this is a synthesis message (Quillo's final message)
-        const isSynthesis = msg.agent === 'quillo' && idx === multiAgentResult.messages.length - 1;
-
-        const agentLabel = msg.agent === 'quillo' ?
-          (isSynthesis ? 'Uorin — Synthesis' : 'Uorin') :
+        // Simple agent label mapping (no "Synthesis" suffix - concept not exposed to users)
+        const agentLabel = msg.agent === 'quillo' ? 'Uorin' :
           msg.agent === 'claude' ? 'Claude' :
           msg.agent === 'deepseek' ? 'DeepSeek' :
           msg.agent === 'gemini' ? 'Gemini' :
@@ -811,15 +809,12 @@ export function ChatScreen() {
 
     try {
       // Call multi-agent chat
-      const multiAgentResult = await multiAgent(userInput, 'demo');
+      const multiAgentResult = await multiAgent(userInput, 'demo', undefined, getUorinMode());
 
       // Add each agent message to the chat, with meta on the first one
       multiAgentResult.messages.forEach((msg, idx) => {
-        // Determine if this is a synthesis message (Quillo's final message)
-        const isSynthesis = msg.agent === 'quillo' && idx === multiAgentResult.messages.length - 1;
-
-        const agentLabel = msg.agent === 'quillo' ?
-          (isSynthesis ? 'Uorin — Synthesis' : 'Uorin') :
+        // Simple agent label mapping (no "Synthesis" suffix - concept not exposed to users)
+        const agentLabel = msg.agent === 'quillo' ? 'Uorin' :
           msg.agent === 'claude' ? 'Claude' :
           msg.agent === 'deepseek' ? 'DeepSeek' :
           msg.agent === 'gemini' ? 'Gemini' :
@@ -1291,7 +1286,7 @@ export function ChatScreen() {
                         Get second opinions
                         {/* Tooltip */}
                         <div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
-                          Claude, Gemini, and DeepSeek will each reply once. Uorin will summarize.
+                          Get perspectives from Claude, DeepSeek, and Gemini.
                           <div className="absolute top-full left-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
                         </div>
                       </button>
@@ -1490,7 +1485,7 @@ export function ChatScreen() {
                 <span className="hidden sm:inline">Get second opinions</span>
                 {/* Tooltip */}
                 <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
-                  Claude, Gemini, and DeepSeek will each reply once. Uorin will summarize.
+                  Get perspectives from Claude, DeepSeek, and Gemini.
                   <div className="absolute top-full right-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-100" />
                 </div>
               </button>

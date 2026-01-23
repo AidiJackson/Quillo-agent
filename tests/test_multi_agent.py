@@ -76,7 +76,7 @@ class TestMultiAgentOfflineMode:
     """Test offline mode (no OpenRouter key)."""
 
     def test_offline_returns_template_transcript(self):
-        """Test that offline mode returns template transcript"""
+        """Test that offline mode returns template transcript (Work mode)"""
         with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
             with patch.object(settings, 'openrouter_api_key', ''):
                 response = client.post(
@@ -84,7 +84,8 @@ class TestMultiAgentOfflineMode:
                     headers={"X-UI-Token": TEST_UI_TOKEN},
                     json={
                         "text": "Can I get a second opinion on this micro-SaaS acquisition deal?",
-                        "user_id": "test-user"
+                        "user_id": "test-user",
+                        "mode": "work"
                     }
                 )
                 assert response.status_code == 200
@@ -119,13 +120,13 @@ class TestMultiAgentOfflineMode:
                     assert len(msg["content"]) > 10
 
     def test_offline_no_chain_of_thought_leakage(self):
-        """Test that offline responses don't leak internal reasoning"""
+        """Test that offline responses don't leak internal reasoning (Work mode)"""
         with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
             with patch.object(settings, 'openrouter_api_key', ''):
                 response = client.post(
                     "/ui/api/multi-agent",
                     headers={"X-UI-Token": TEST_UI_TOKEN},
-                    json={"text": "Test question", "user_id": "test-user"}
+                    json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                 )
                 assert response.status_code == 200
                 data = response.json()
@@ -188,7 +189,7 @@ class TestMultiAgentOnlineMode:
                     response = client.post(
                         "/ui/api/multi-agent",
                         headers={"X-UI-Token": TEST_UI_TOKEN},
-                        json={"text": "Test question", "user_id": "test-user"}
+                        json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                     )
                     assert response.status_code == 200
                     data = response.json()
@@ -197,15 +198,15 @@ class TestMultiAgentOnlineMode:
                     assert data["provider"] == "openrouter"
                     assert data["fallback_reason"] is None
 
-                    # Should have 5 messages
+                    # Should have 5 messages (Work mode)
                     assert len(data["messages"]) == 5
 
-                    # Check agents
+                    # Check agents (Work mode)
                     agents = [msg["agent"] for msg in data["messages"]]
                     assert agents == ["quillo", "claude", "deepseek", "gemini", "quillo"]
 
     def test_online_all_peers_fail_partial_live(self):
-        """Test that when all peer agents fail, we get partial-live with peers_unavailable=True"""
+        """Test that when all peer agents fail, we get partial-live with peers_unavailable=True (Work mode)"""
         async def mock_post_error(*args, **kwargs):
             """Mock httpx.AsyncClient.post that raises error for all OpenRouter calls"""
             raise httpx.HTTPError("API error")
@@ -216,7 +217,7 @@ class TestMultiAgentOnlineMode:
                     response = client.post(
                         "/ui/api/multi-agent",
                         headers={"X-UI-Token": TEST_UI_TOKEN},
-                        json={"text": "Test question", "user_id": "test-user"}
+                        json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                     )
                     assert response.status_code == 200
                     data = response.json()
@@ -239,13 +240,13 @@ class TestMultiAgentResponseStructure:
     """Test response structure and content quality."""
 
     def test_response_has_all_required_fields(self):
-        """Test that response has all required fields"""
+        """Test that response has all required fields (Work mode)"""
         with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
             with patch.object(settings, 'openrouter_api_key', ''):
                 response = client.post(
                     "/ui/api/multi-agent",
                     headers={"X-UI-Token": TEST_UI_TOKEN},
-                    json={"text": "Test question", "user_id": "test-user"}
+                    json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                 )
                 assert response.status_code == 200
                 data = response.json()
@@ -275,7 +276,7 @@ class TestMultiAgentResponseStructure:
                 response = client.post(
                     "/ui/api/multi-agent",
                     headers={"X-UI-Token": TEST_UI_TOKEN},
-                    json={"text": "Test question", "user_id": "test-user"}
+                    json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                 )
                 assert response.status_code == 200
                 data = response.json()
@@ -287,13 +288,13 @@ class TestMultiAgentResponseStructure:
                     pytest.fail("trace_id is not a valid UUID")
 
     def test_messages_in_correct_order(self):
-        """Test that messages are in correct order"""
+        """Test that messages are in correct order (Work mode)"""
         with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
             with patch.object(settings, 'openrouter_api_key', ''):
                 response = client.post(
                     "/ui/api/multi-agent",
                     headers={"X-UI-Token": TEST_UI_TOKEN},
-                    json={"text": "Test question", "user_id": "test-user"}
+                    json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                 )
                 assert response.status_code == 200
                 data = response.json()
@@ -307,14 +308,14 @@ class TestMultiAgentResponseStructure:
                 assert agents[4] == "quillo"  # Primary synthesizes
 
     def test_optional_agents_parameter(self):
-        """Test that agents parameter is optional"""
+        """Test that agents parameter is optional (Work mode)"""
         with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
             with patch.object(settings, 'openrouter_api_key', ''):
-                # Without agents parameter
+                # Without agents parameter, with explicit Work mode
                 response = client.post(
                     "/ui/api/multi-agent",
                     headers={"X-UI-Token": TEST_UI_TOKEN},
-                    json={"text": "Test question"}
+                    json={"text": "Test question", "mode": "work"}
                 )
                 assert response.status_code == 200
                 data = response.json()
@@ -325,13 +326,13 @@ class TestMultiAgentDevBypass:
     """Test dev mode bypass behavior."""
 
     def test_dev_mode_no_token_configured_bypasses(self):
-        """Test that dev mode with no token configured bypasses auth"""
+        """Test that dev mode with no token configured bypasses auth (Work mode)"""
         with patch.object(settings, 'app_env', 'dev'):
             with patch.object(settings, 'quillo_ui_token', ''):
                 with patch.object(settings, 'openrouter_api_key', ''):
                     response = client.post(
                         "/ui/api/multi-agent",
-                        json={"text": "Test question", "user_id": "test-user"}
+                        json={"text": "Test question", "user_id": "test-user", "mode": "work"}
                     )
                     assert response.status_code == 200
                     data = response.json()
@@ -381,7 +382,7 @@ class TestMultiAgentTruncation:
                     response = client.post(
                         "/ui/api/multi-agent",
                         headers={"X-UI-Token": TEST_UI_TOKEN},
-                        json={"text": "Should I build a custom CRM or use an off-the-shelf solution?", "user_id": "test-user"}
+                        json={"text": "Should I build a custom CRM or use an off-the-shelf solution?", "user_id": "test-user", "mode": "work"}
                     )
                     assert response.status_code == 200
                     data = response.json()
@@ -423,7 +424,7 @@ class TestMultiAgentPartialLive:
     """Test partial-live behavior where individual agents can fail independently."""
 
     def test_quillo_succeeds_all_peers_fail(self):
-        """Test Quillo succeeds but all peers fail → openrouter with peers_unavailable=True"""
+        """Test Quillo succeeds but all peers fail → openrouter with peers_unavailable=True (Work mode)"""
         call_count = [0]
 
         def create_mock_response(model, content):
@@ -451,7 +452,7 @@ class TestMultiAgentPartialLive:
                 with patch('httpx.AsyncClient.post', new=mock_post):
                     response = client.post("/ui/api/multi-agent",
                                            headers={"X-UI-Token": TEST_UI_TOKEN},
-                                           json={"text": "test", "user_id": "demo"})
+                                           json={"text": "test", "user_id": "demo", "mode": "work"})
 
                     assert response.status_code == 200
                     data = response.json()
@@ -465,7 +466,7 @@ class TestMultiAgentPartialLive:
                     assert "[Agent unavailable:" in claude_msg["content"]
 
     def test_quillo_and_one_peer_succeed(self):
-        """Test Quillo + Claude succeed, DeepSeek/Gemini fail → openrouter, peers_unavailable=False"""
+        """Test Quillo + Claude succeed, DeepSeek/Gemini fail → openrouter, peers_unavailable=False (Work mode)"""
         call_count = [0]
 
         def create_mock_response(model, content):
@@ -501,7 +502,7 @@ class TestMultiAgentPartialLive:
                 with patch('httpx.AsyncClient.post', new=mock_post):
                     response = client.post("/ui/api/multi-agent",
                                            headers={"X-UI-Token": TEST_UI_TOKEN},
-                                           json={"text": "test", "user_id": "demo"})
+                                           json={"text": "test", "user_id": "demo", "mode": "work"})
 
                     assert response.status_code == 200
                     data = response.json()
@@ -519,7 +520,7 @@ class TestMultiAgentPartialLive:
                     assert deepseek_msg["unavailable_reason"] == "rate_limited"
 
     def test_all_messages_have_new_metadata_fields(self):
-        """Test that all messages have model_id, live, unavailable_reason fields"""
+        """Test that all messages have model_id, live, unavailable_reason fields (Work mode)"""
 
         def create_mock_response(model, content):
             mock_resp = MagicMock()
@@ -538,7 +539,7 @@ class TestMultiAgentPartialLive:
                 with patch('httpx.AsyncClient.post', new=mock_post):
                     response = client.post("/ui/api/multi-agent",
                                            headers={"X-UI-Token": TEST_UI_TOKEN},
-                                           json={"text": "test", "user_id": "demo"})
+                                           json={"text": "test", "user_id": "demo", "mode": "work"})
 
                     assert response.status_code == 200
                     data = response.json()
@@ -554,3 +555,177 @@ class TestMultiAgentPartialLive:
                         # Live messages should have unavailable_reason=None
                         if msg["live"]:
                             assert msg["unavailable_reason"] is None
+
+
+class TestNormalModeParity:
+    """Test Normal mode multi-agent feels native (no work scaffolding)."""
+
+    # Work scaffolding markers that should NOT appear in Normal mode
+    WORK_SCAFFOLDING_MARKERS = [
+        "Evidence:",
+        "Interpretation:",
+        "Recommendation:",
+        "TRUST CONTRACT",
+        "no guessing",
+        "Stress Test",
+        "lens",
+        "Top Risks",
+        "Key Disagreements",
+        "Best Move",
+        "Alternatives",
+        "Execution Tool",
+    ]
+
+    def test_normal_mode_returns_peers_only(self):
+        """Test that Normal mode returns only peer messages (no intro, no synthesis)"""
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', ''):
+                response = client.post(
+                    "/ui/api/multi-agent",
+                    headers={"X-UI-Token": TEST_UI_TOKEN},
+                    json={
+                        "text": "What's a good price for a micro-SaaS?",
+                        "user_id": "test-user",
+                        "mode": "normal"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+
+                # Normal mode: 3 messages (Claude, DeepSeek, Gemini) - NO quillo
+                assert len(data["messages"]) == 3
+
+                # Check agents - should be peers only
+                agents = [msg["agent"] for msg in data["messages"]]
+                assert "quillo" not in agents, "Normal mode should not include Uorin/quillo messages"
+                assert agents == ["claude", "deepseek", "gemini"]
+
+    def test_normal_mode_no_work_scaffolding_markers(self):
+        """Test that Normal mode responses don't contain work scaffolding markers"""
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', ''):
+                response = client.post(
+                    "/ui/api/multi-agent",
+                    headers={"X-UI-Token": TEST_UI_TOKEN},
+                    json={
+                        "text": "Should I invest in Bitcoin?",
+                        "user_id": "test-user",
+                        "mode": "normal"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+
+                # Check all messages for work scaffolding markers
+                for msg in data["messages"]:
+                    content = msg["content"]
+                    for marker in self.WORK_SCAFFOLDING_MARKERS:
+                        assert marker not in content, \
+                            f"Work scaffolding marker '{marker}' found in Normal mode response: {content[:100]}..."
+
+    def test_work_mode_returns_full_structure(self):
+        """Test that Work mode still returns intro + peers + synthesis"""
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', ''):
+                # Use a longer prompt to avoid triggering no-assumptions check
+                response = client.post(
+                    "/ui/api/multi-agent",
+                    headers={"X-UI-Token": TEST_UI_TOKEN},
+                    json={
+                        "text": "I'm considering whether to use React or Vue for my new e-commerce project. I need something that scales well and has good ecosystem support. My team is experienced in JavaScript but not specifically in either framework. We expect around 10,000 daily users initially.",
+                        "user_id": "test-user",
+                        "mode": "work"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+
+                # Work mode: 5 messages (quillo intro, claude, deepseek, gemini, quillo synthesis)
+                assert len(data["messages"]) == 5
+
+                # Check agents order
+                agents = [msg["agent"] for msg in data["messages"]]
+                assert agents == ["quillo", "claude", "deepseek", "gemini", "quillo"]
+
+                # First message should be Quillo intro
+                assert "perspectives" in data["messages"][0]["content"].lower()
+
+                # Last message should be Quillo synthesis
+                assert data["messages"][-1]["agent"] == "quillo"
+
+    def test_mode_defaults_to_normal(self):
+        """Test that mode defaults to 'normal' when not specified"""
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', ''):
+                response = client.post(
+                    "/ui/api/multi-agent",
+                    headers={"X-UI-Token": TEST_UI_TOKEN},
+                    json={
+                        "text": "Test question",
+                        "user_id": "test-user"
+                        # mode not specified - should default to normal
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+
+                # Should behave like Normal mode: 3 peer messages only
+                assert len(data["messages"]) == 3
+                agents = [msg["agent"] for msg in data["messages"]]
+                assert "quillo" not in agents
+
+    def test_mode_case_insensitive(self):
+        """Test that mode is case-insensitive"""
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', ''):
+                # Test WORK (uppercase)
+                response = client.post(
+                    "/ui/api/multi-agent",
+                    headers={"X-UI-Token": TEST_UI_TOKEN},
+                    json={
+                        "text": "Test question",
+                        "user_id": "test-user",
+                        "mode": "WORK"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert len(data["messages"]) == 5  # Work mode structure
+
+                # Test Normal (mixed case)
+                response = client.post(
+                    "/ui/api/multi-agent",
+                    headers={"X-UI-Token": TEST_UI_TOKEN},
+                    json={
+                        "text": "Test question",
+                        "user_id": "test-user",
+                        "mode": "Normal"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert len(data["messages"]) == 3  # Normal mode structure
+
+    def test_normal_mode_skips_trust_contract_checks(self):
+        """Test that Normal mode skips no-assumptions and evidence auto-fetch"""
+        with patch.object(settings, 'quillo_ui_token', TEST_UI_TOKEN):
+            with patch.object(settings, 'openrouter_api_key', ''):
+                # This prompt would trigger no-assumptions in Work mode (short, vague)
+                response = client.post(
+                    "/ui/api/multi-agent",
+                    headers={"X-UI-Token": TEST_UI_TOKEN},
+                    json={
+                        "text": "Help",
+                        "user_id": "test-user",
+                        "mode": "normal"
+                    }
+                )
+                assert response.status_code == 200
+                data = response.json()
+
+                # Should NOT return a "I need details" clarifying question
+                # Should return peer messages directly
+                assert len(data["messages"]) == 3
+                for msg in data["messages"]:
+                    assert "I need a few details" not in msg["content"]
+                    assert "no guessing" not in msg["content"]

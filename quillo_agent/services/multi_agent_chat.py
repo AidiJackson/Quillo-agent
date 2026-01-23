@@ -147,28 +147,52 @@ Do not reveal chain-of-thought. Do not describe tool usage."""
     return _get_agent_prompt(agent_name, mode="raw", stress_test_mode=stress_test_mode)
 
 
+def _get_agent_prompt_normal(agent_name: str) -> str:
+    """
+    Get minimal system prompt for Normal mode (no trust contract, no scaffolding).
+
+    Normal mode: feels like native ChatGPT/Claude/Gemini - raw, natural, unrestricted.
+    No structured outputs. No "Evidence/Interpretation/Recommendation".
+    Just respond naturally.
+
+    Args:
+        agent_name: Name of agent ("claude", "deepseek", "gemini")
+
+    Returns:
+        Minimal system prompt string
+    """
+    prompts = {
+        "claude": "You are Claude. Respond naturally and concisely to the user's question.",
+        "deepseek": "You are DeepSeek. Respond naturally and concisely. Feel free to offer contrarian views if appropriate.",
+        "gemini": "You are Gemini. Respond naturally and concisely with a systematic perspective.",
+    }
+    return prompts.get(agent_name, "Respond naturally and concisely.")
+
+
 async def run_multi_agent_chat(
     text: str,
     user_id: Optional[str] = None,
     agents: Optional[list[str]] = None,
     trace_id: Optional[str] = None,
     evidence_context: Optional[str] = None,
-    stress_test_mode: bool = False
+    stress_test_mode: bool = False,
+    normal_mode: bool = False
 ) -> tuple[list[dict], str, Optional[str], bool]:
     """
-    Run a multi-agent chat conversation with TRUST CONTRACT v1 enforcement.
+    Run a multi-agent chat conversation.
 
-    TRUST CONTRACT behaviors:
-    - Evidence context injected into agent prompts if provided
-    - Structured outputs enforced: Evidence/Interpretation/Recommendation
-    - Synthesis preserves meaningful disagreements
+    Mode behaviors:
+    - normal_mode=True: Raw peer responses only, no synthesis, no trust contract scaffolding
+    - normal_mode=False (Work mode): Trust contract enforcement, structured outputs, synthesis
 
     Args:
         text: User's input text
         user_id: Optional user identifier
         agents: List of agent names (default: ["primary", "claude", "deepseek"])
         trace_id: Optional trace ID for logging
-        evidence_context: Optional evidence block to inject into prompts
+        evidence_context: Optional evidence block to inject into prompts (Work mode only)
+        stress_test_mode: Whether to use stress test lens assignments (Work mode only)
+        normal_mode: If True, use minimal prompts and skip synthesis (feels native)
 
     Returns:
         Tuple of (messages, provider, fallback_reason, peers_unavailable)
@@ -178,17 +202,17 @@ async def run_multi_agent_chat(
         - peers_unavailable: True if Quillo succeeded but all peer agents failed
     """
     agents = agents or ["primary", "claude", "deepseek"]
-    logger.info(f"Multi-agent chat: user_id={user_id}, agents={agents}, trace_id={trace_id}, has_evidence={bool(evidence_context)}")
+    logger.info(f"Multi-agent chat: user_id={user_id}, agents={agents}, trace_id={trace_id}, normal_mode={normal_mode}")
 
     # Check if OpenRouter is available
     if not settings.openrouter_api_key:
         fallback_reason = "openrouter_key_missing"
         logger.info(f"[{trace_id}] OpenRouter key missing, using template responses")
-        return _generate_template_transcript(text), "template", fallback_reason, False
+        return _generate_template_transcript(text, normal_mode=normal_mode), "template", fallback_reason, False
 
     # Use OpenRouter to generate real conversation
     try:
-        messages = await _generate_openrouter_transcript(text, evidence_context, stress_test_mode)
+        messages = await _generate_openrouter_transcript(text, evidence_context, stress_test_mode, normal_mode=normal_mode)
         # Determine if all peers failed
         live_peer_count = sum(1 for m in messages if m.get("agent") in ["claude", "deepseek", "gemini"] and m.get("live", True))
         peers_unavailable = (live_peer_count == 0)
@@ -196,30 +220,31 @@ async def run_multi_agent_chat(
     except httpx.TimeoutException as e:
         fallback_reason = "openrouter_timeout"
         logger.warning(f"[{trace_id}] Multi-agent fallback: {fallback_reason} ({e.__class__.__name__})")
-        return _generate_template_transcript(text), "template", fallback_reason, False
+        return _generate_template_transcript(text, normal_mode=normal_mode), "template", fallback_reason, False
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 429:
             fallback_reason = "openrouter_rate_limited"
         else:
             fallback_reason = "openrouter_http_error"
         logger.warning(f"[{trace_id}] Multi-agent fallback: {fallback_reason} ({e.__class__.__name__}: {e.response.status_code})")
-        return _generate_template_transcript(text), "template", fallback_reason, False
+        return _generate_template_transcript(text, normal_mode=normal_mode), "template", fallback_reason, False
     except httpx.HTTPError as e:
         fallback_reason = "openrouter_http_error"
         logger.warning(f"[{trace_id}] Multi-agent fallback: {fallback_reason} ({e.__class__.__name__})")
-        return _generate_template_transcript(text), "template", fallback_reason, False
+        return _generate_template_transcript(text, normal_mode=normal_mode), "template", fallback_reason, False
     except Exception as e:
         fallback_reason = "openrouter_exception"
         logger.warning(f"[{trace_id}] Multi-agent fallback: {fallback_reason} ({e.__class__.__name__})")
-        return _generate_template_transcript(text), "template", fallback_reason, False
+        return _generate_template_transcript(text, normal_mode=normal_mode), "template", fallback_reason, False
 
 
-def _generate_template_transcript(text: str) -> list[dict]:
+def _generate_template_transcript(text: str, normal_mode: bool = False) -> list[dict]:
     """
     Generate a deterministic template transcript (offline mode).
 
     Args:
         text: User's input text
+        normal_mode: If True, return peers only (no intro, no synthesis message)
 
     Returns:
         List of message dicts with new metadata fields
@@ -227,15 +252,8 @@ def _generate_template_transcript(text: str) -> list[dict]:
     # Extract a short excerpt from user text for personalization
     excerpt = text[:50] + "..." if len(text) > 50 else text
 
-    return [
-        {
-            "role": "assistant",
-            "agent": "quillo",
-            "content": f"Got it. Let me bring in a few perspectives on this. We'll hear from Claude, DeepSeek, and Gemini.",
-            "model_id": None,
-            "live": True,
-            "unavailable_reason": None
-        },
+    # Peer messages (always included)
+    peer_messages = [
         {
             "role": "assistant",
             "agent": "claude",
@@ -260,37 +278,52 @@ def _generate_template_transcript(text: str) -> list[dict]:
             "live": True,
             "unavailable_reason": None
         },
-        {
-            "role": "assistant",
-            "agent": "quillo",
-            "content": f"All three perspectives add value. My recommendation: use Gemini's phased approach as your framework, with Claude's long-term lens and DeepSeek's urgency check at each phase. Quick question: what's the smallest pilot you could run to validate this?",
-            "model_id": None,
-            "live": True,
-            "unavailable_reason": None
-        }
     ]
+
+    if normal_mode:
+        # Normal mode: peers only, no intro, no synthesis
+        return peer_messages
+
+    # Work mode: intro + peers + synthesis
+    intro_message = {
+        "role": "assistant",
+        "agent": "quillo",
+        "content": f"Got it. Let me bring in a few perspectives on this. We'll hear from Claude, DeepSeek, and Gemini.",
+        "model_id": None,
+        "live": True,
+        "unavailable_reason": None
+    }
+
+    synthesis_message = {
+        "role": "assistant",
+        "agent": "quillo",
+        "content": f"All three perspectives add value. My recommendation: use Gemini's phased approach as your framework, with Claude's long-term lens and DeepSeek's urgency check at each phase. Quick question: what's the smallest pilot you could run to validate this?",
+        "model_id": None,
+        "live": True,
+        "unavailable_reason": None
+    }
+
+    return [intro_message] + peer_messages + [synthesis_message]
 
 
 async def _generate_openrouter_transcript(
     text: str,
     evidence_context: Optional[str] = None,
-    stress_test_mode: bool = False
+    stress_test_mode: bool = False,
+    normal_mode: bool = False
 ) -> list[dict]:
     """
-    Generate multi-agent conversation with partial-live support and TRUST CONTRACT enforcement.
+    Generate multi-agent conversation with partial-live support.
 
-    Flow:
-    1. Quillo frame (deterministic) - if this fails, exception propagates
-    2. Claude, DeepSeek, Gemini (independent) - failures replaced with unavailable messages
-    3. Quillo synthesis (adapts to available peers) - uses available perspectives
-
-    TRUST CONTRACT:
-    - Evidence context injected into peer prompts if provided
-    - Structured output format enforced in system prompts
+    Flow depends on mode:
+    - Normal mode: Peers only (Claude, DeepSeek, Gemini) with minimal prompts, no synthesis
+    - Work mode: Intro + Peers + Synthesis with trust contract enforcement
 
     Args:
         text: User's input text
-        evidence_context: Optional evidence block to inject
+        evidence_context: Optional evidence block to inject (Work mode only)
+        stress_test_mode: Whether to use stress test lens assignments (Work mode only)
+        normal_mode: If True, return peers only with minimal prompts (feels native)
 
     Returns:
         List of message dicts with new metadata fields (model_id, live, unavailable_reason)
@@ -300,26 +333,33 @@ async def _generate_openrouter_transcript(
     peer_responses = {}
     trace_id = str(uuid.uuid4())
 
-    # Build user message with optional evidence context
+    # Build user message - only inject evidence in Work mode
     user_message = text
-    if evidence_context:
+    if not normal_mode and evidence_context:
         user_message = f"{evidence_context}\n\n---\n\nUser question: {text}"
 
-    # Message 1: Primary frame (deterministic, always succeeds)
-    primary_frame = _generate_short_frame(text)
-    messages.append({
-        "role": "assistant",
-        "agent": "quillo",
-        "content": primary_frame,
-        "model_id": None,
-        "live": True,
-        "unavailable_reason": None
-    })
+    # Message 1: Primary frame (Work mode only)
+    if not normal_mode:
+        primary_frame = _generate_short_frame(text)
+        messages.append({
+            "role": "assistant",
+            "agent": "quillo",
+            "content": primary_frame,
+            "model_id": None,
+            "live": True,
+            "unavailable_reason": None
+        })
+
+    # Select prompt function based on mode
+    def get_prompt(agent_name: str) -> str:
+        if normal_mode:
+            return _get_agent_prompt_normal(agent_name)
+        return _get_agent_prompt(agent_name, mode=prompt_mode, stress_test_mode=stress_test_mode)
 
     # Message 2: Claude perspective (safe call)
     claude_content, claude_reason = await _call_openrouter_safe(
         model=CLAUDE_MODEL,
-        system_prompt=_get_agent_prompt("claude", mode=prompt_mode, stress_test_mode=stress_test_mode),
+        system_prompt=get_prompt("claude"),
         user_message=user_message,
         agent_name="claude",
         trace_id=trace_id
@@ -347,7 +387,7 @@ async def _generate_openrouter_transcript(
     # Message 3: DeepSeek perspective (safe call)
     deepseek_content, deepseek_reason = await _call_openrouter_safe(
         model=CHALLENGER_MODEL,
-        system_prompt=_get_agent_prompt("deepseek", mode=prompt_mode, stress_test_mode=stress_test_mode),
+        system_prompt=get_prompt("deepseek"),
         user_message=user_message,
         agent_name="deepseek",
         trace_id=trace_id
@@ -375,7 +415,7 @@ async def _generate_openrouter_transcript(
     # Message 4: Gemini perspective (safe call)
     gemini_content, gemini_reason = await _call_openrouter_safe(
         model=GEMINI_MODEL,
-        system_prompt=_get_agent_prompt("gemini", mode=prompt_mode, stress_test_mode=stress_test_mode),
+        system_prompt=get_prompt("gemini"),
         user_message=user_message,
         agent_name="gemini",
         trace_id=trace_id
@@ -400,36 +440,37 @@ async def _generate_openrouter_transcript(
             "unavailable_reason": gemini_reason
         })
 
-    # Message 5: Primary synthesis (adapts to available peers)
-    synth_prompt = _build_synthesis_prompt(text, peer_responses)
-    synth_content, synth_reason = await _call_openrouter_safe(
-        model=PRIMARY_MODEL,
-        system_prompt=_get_agent_prompt("primary_synth", mode=prompt_mode, stress_test_mode=stress_test_mode),
-        user_message=synth_prompt,
-        agent_name="quillo",
-        trace_id=trace_id
-    )
+    # Message 5: Primary synthesis (Work mode only)
+    if not normal_mode:
+        synth_prompt = _build_synthesis_prompt(text, peer_responses)
+        synth_content, synth_reason = await _call_openrouter_safe(
+            model=PRIMARY_MODEL,
+            system_prompt=_get_agent_prompt("primary_synth", mode=prompt_mode, stress_test_mode=stress_test_mode),
+            user_message=synth_prompt,
+            agent_name="quillo",
+            trace_id=trace_id
+        )
 
-    if synth_content:
-        messages.append({
-            "role": "assistant",
-            "agent": "quillo",
-            "content": synth_content,
-            "model_id": PRIMARY_MODEL,
-            "live": True,
-            "unavailable_reason": None
-        })
-    else:
-        # Fallback synthesis if PRIMARY_MODEL fails
-        fallback_synth = "I've gathered perspectives from the available agents above. Let me know if you'd like me to explore any aspect further."
-        messages.append({
-            "role": "assistant",
-            "agent": "quillo",
-            "content": fallback_synth,
-            "model_id": PRIMARY_MODEL,
-            "live": False,
-            "unavailable_reason": synth_reason
-        })
+        if synth_content:
+            messages.append({
+                "role": "assistant",
+                "agent": "quillo",
+                "content": synth_content,
+                "model_id": PRIMARY_MODEL,
+                "live": True,
+                "unavailable_reason": None
+            })
+        else:
+            # Fallback synthesis if PRIMARY_MODEL fails
+            fallback_synth = "I've gathered perspectives from the available agents above. Let me know if you'd like me to explore any aspect further."
+            messages.append({
+                "role": "assistant",
+                "agent": "quillo",
+                "content": fallback_synth,
+                "model_id": PRIMARY_MODEL,
+                "live": False,
+                "unavailable_reason": synth_reason
+            })
 
     # Log response lengths for all agents (for truncation monitoring)
     logger.info("Multi-agent response lengths: " + ", ".join([
@@ -443,7 +484,7 @@ async def _generate_openrouter_transcript(
 def _generate_short_frame(text: str) -> str:
     """Generate a short framing message for Primary."""
     # Keep it simple for v0.1
-    return "Got it. Let me bring in a few perspectives on this. We'll hear from Claude, Grok, and Gemini."
+    return "Got it. Let me bring in a few perspectives on this. We'll hear from Claude, DeepSeek, and Gemini."
 
 
 async def _call_openrouter_safe(

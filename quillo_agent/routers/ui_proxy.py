@@ -763,36 +763,66 @@ async def ui_multi_agent_chat(
     token: str = Depends(verify_ui_token)
 ) -> MultiAgentResponse:
     """
-    UI proxy for multi-agent chat with TRUST CONTRACT v1 + STRESS TEST v1 enforcement.
+    UI proxy for multi-agent chat.
 
-    TRUST CONTRACT BEHAVIORS:
+    Mode behaviors:
+    - mode="normal": Raw peer responses only, no trust contract, no synthesis (feels native)
+    - mode="work": Full trust contract + stress test enforcement + synthesis
+
+    WORK MODE BEHAVIORS:
     1. Evidence default-on: Auto-fetches evidence for factual/temporal prompts
     2. No assumptions: Asks clarifying questions if critical context is missing
     3. Structured outputs: Each agent provides Evidence/Interpretation/Recommendation
     4. Meaningful disagreements: Synthesis preserves substantive differences
-    5. Evidence limitations: States clearly when evidence unavailable
-
-    STRESS TEST v1 BEHAVIORS (automatic when consequence detected):
-    6. Consequence detection: Auto-detects decision-making/high-stakes prompts
-    7. Lens assignments: Risk/Relationship/Strategy/Execution lenses
-    8. Stricter synthesis: Top risks, disagreements, alternatives, execution tool
+    5. Consequence detection: Auto-detects decision-making/high-stakes prompts
+    6. Lens assignments: Risk/Relationship/Strategy/Execution lenses
 
     Rate limited to 30 requests per minute per IP.
 
     Args:
         request: FastAPI request (for rate limiting)
-        payload: MultiAgentRequest with text, user_id, agents
+        payload: MultiAgentRequest with text, user_id, agents, mode
         token: Validated UI token
 
     Returns:
         MultiAgentResponse with messages, provider, trace_id
     """
     import uuid
-    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, trust_contract=v1, stress_test=v1")
+
+    # Determine mode (default to "normal", case-insensitive)
+    request_mode = (payload.mode or "normal").lower()
+    normal_mode = request_mode != "work"
+
+    logger.info(f"UI POST /multi-agent: user_id={payload.user_id}, mode={request_mode}, normal_mode={normal_mode}")
 
     # Generate trace ID
     trace_id = str(uuid.uuid4())
 
+    # NORMAL MODE: Skip all Work scaffolding, just get peer responses
+    if normal_mode:
+        logger.info(f"[{trace_id}] Normal mode - skipping trust contract, evidence, stress test")
+
+        messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
+            text=payload.text,
+            user_id=payload.user_id,
+            agents=payload.agents,
+            trace_id=trace_id,
+            evidence_context=None,
+            stress_test_mode=False,
+            normal_mode=True
+        )
+
+        messages = [MultiAgentMessage(**msg) for msg in messages_data]
+
+        return MultiAgentResponse(
+            messages=messages,
+            provider=provider,
+            trace_id=trace_id,
+            fallback_reason=fallback_reason,
+            peers_unavailable=peers_unavailable
+        )
+
+    # ===== WORK MODE BELOW =====
     # SELF-EXPLANATION v1: Check for transparency query (short-circuit before any LLM calls)
     if is_transparency_query(payload.text):
         logger.info(f"[{trace_id}] Transparency query detected in multi-agent - returning transparency card")
@@ -912,14 +942,15 @@ async def ui_multi_agent_chat(
     else:
         logger.info(f"[{trace_id}] Normal multi-agent mode - no consequence detected")
 
-    # Run multi-agent chat with evidence context and stress test mode
+    # Run multi-agent chat with evidence context and stress test mode (Work mode)
     messages_data, provider, fallback_reason, peers_unavailable = await run_multi_agent_chat(
         text=payload.text,
         user_id=payload.user_id,
         agents=payload.agents,
         trace_id=trace_id,
-        evidence_context=evidence_context,  # Pass evidence to multi-agent
-        stress_test_mode=stress_test_mode  # Pass stress test flag
+        evidence_context=evidence_context,
+        stress_test_mode=stress_test_mode,
+        normal_mode=False
     )
 
     # Convert to MultiAgentMessage models
