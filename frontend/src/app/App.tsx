@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatScreen } from './components/ChatScreen';
+import { WorksheetScreen } from './components/WorksheetScreen';
 import { TasksScreen } from './components/TasksScreen';
 import { WorkflowsScreen } from './components/WorkflowsScreen';
 import { ProfileScreen } from './components/ProfileScreen';
@@ -86,10 +87,18 @@ export default function App() {
     setShowOnboardingWizard(false);
   };
 
+  const handleNavigateToChat = (prefillText: string) => {
+    // Store prefill in sessionStorage for ChatScreen to pick up
+    sessionStorage.setItem('uorin_chat_prefill', prefillText);
+    setActiveTab('chat');
+  };
+
   const renderScreen = () => {
     switch (activeTab) {
       case 'chat':
         return <ChatScreen />;
+      case 'worksheet':
+        return <WorksheetScreen onNavigateToChat={handleNavigateToChat} />;
       case 'tasks':
         return <TasksScreen />;
       case 'workflows':

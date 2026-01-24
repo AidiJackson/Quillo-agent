@@ -448,6 +448,15 @@ export function ChatScreen() {
     checkConfig();
   }, []);
 
+  // Check for prefill from Worksheet or other sources
+  useEffect(() => {
+    const prefill = sessionStorage.getItem('uorin_chat_prefill');
+    if (prefill) {
+      setInput(prefill);
+      sessionStorage.removeItem('uorin_chat_prefill');
+    }
+  }, []);
+
   // Evidence Layer v1: Handlers for manual evidence retrieval
   const handleFetchEvidence = async (query: string) => {
     setLoading(true);

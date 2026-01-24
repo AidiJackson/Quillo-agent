@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, Workflow, User, Settings, Activity, Lock, Menu, CheckSquare } from 'lucide-react';
+import { MessageSquare, Workflow, User, Settings, Activity, Lock, Menu, CheckSquare, ClipboardList } from 'lucide-react';
 import type { UorinMode } from '@/lib/uorinMode';
 
 interface SidebarProps {
@@ -12,6 +12,7 @@ interface SidebarProps {
 
 const allMenuItems = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'worksheet', label: 'Worksheet', icon: ClipboardList },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare, workModeOnly: true },
   { id: 'workflows', label: 'Workflows', icon: Workflow },
   { id: 'profile', label: 'Profile', icon: User },
