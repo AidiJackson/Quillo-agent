@@ -48,6 +48,8 @@ export function SettingsScreen() {
   const handleModeChange = (newMode: UorinMode) => {
     setUorinModeState(newMode);
     setUorinMode(newMode);
+    // Dispatch custom event so App.tsx can react (e.g., hide Tasks nav)
+    window.dispatchEvent(new Event('uorin-mode-change'));
   };
 
   const handleApprovalModeChange = async (newMode: 'confirm_every_step' | 'plan_then_auto' | 'auto_lowrisk_confirm_highrisk') => {

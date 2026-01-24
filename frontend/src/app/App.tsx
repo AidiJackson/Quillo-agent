@@ -11,12 +11,37 @@ import { OnboardingWizard } from './components/OnboardingWizard';
 import { Toaster } from './components/ui/sonner';
 import { Menu } from 'lucide-react';
 import { getJudgmentProfile } from '@/lib/quilloApi';
+import { getUorinMode, type UorinMode } from '@/lib/uorinMode';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('chat');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
   const [profileCheckComplete, setProfileCheckComplete] = useState(false);
+  const [mode, setMode] = useState<UorinMode>(getUorinMode);
+
+  // Sync mode with localStorage changes (e.g., from SettingsScreen)
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setMode(getUorinMode());
+    };
+
+    // Listen for storage events (cross-tab) and custom mode change events
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('uorin-mode-change', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('uorin-mode-change', handleStorageChange);
+    };
+  }, []);
+
+  // If user somehow ends up on 'tasks' tab in Normal mode, redirect to chat
+  useEffect(() => {
+    if (mode === 'normal' && activeTab === 'tasks') {
+      setActiveTab('chat');
+    }
+  }, [mode, activeTab]);
 
   // Check for judgment profile on mount
   useEffect(() => {
@@ -102,6 +127,7 @@ export default function App() {
           onTabChange={setActiveTab}
           isMobileOpen={isMobileSidebarOpen}
           onMobileClose={() => setIsMobileSidebarOpen(false)}
+          mode={mode}
         />
 
         {/* Main Content */}

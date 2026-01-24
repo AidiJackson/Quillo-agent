@@ -1,16 +1,18 @@
 import React from 'react';
 import { MessageSquare, Workflow, User, Settings, Activity, Lock, Menu, CheckSquare } from 'lucide-react';
+import type { UorinMode } from '@/lib/uorinMode';
 
 interface SidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   isMobileOpen: boolean;
   onMobileClose: () => void;
+  mode: UorinMode;
 }
 
-const menuItems = [
+const allMenuItems = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'tasks', label: 'Tasks', icon: CheckSquare },
+  { id: 'tasks', label: 'Tasks', icon: CheckSquare, workModeOnly: true },
   { id: 'workflows', label: 'Workflows', icon: Workflow },
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -18,7 +20,14 @@ const menuItems = [
   { id: 'integrations', label: 'Integrations', icon: Lock, locked: true },
 ];
 
-export function Sidebar({ activeTab, onTabChange, isMobileOpen, onMobileClose }: SidebarProps) {
+export function Sidebar({ activeTab, onTabChange, isMobileOpen, onMobileClose, mode }: SidebarProps) {
+  // Filter menu items based on mode - Tasks only visible in Work mode
+  const menuItems = allMenuItems.filter(item => {
+    if (item.workModeOnly && mode === 'normal') {
+      return false;
+    }
+    return true;
+  });
   return (
     <>
       {/* Mobile Overlay */}

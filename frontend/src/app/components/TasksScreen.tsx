@@ -217,19 +217,27 @@ export function TasksScreen() {
   }
 
   if (error) {
+    // Show friendly error for setup/backend issues (500 errors)
+    const isSetupError = error.includes('500') || error.includes('fetch failed') || error.includes('network');
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="text-center max-w-md">
-          <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-3">
-            <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+          <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-3">
+            <Circle className="w-6 h-6 text-amber-600 dark:text-amber-400" />
           </div>
-          <h3 className="text-lg font-semibold mb-2">Failed to load tasks</h3>
-          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <h3 className="text-lg font-semibold mb-2">
+            {isSetupError ? "Tasks aren't available right now" : "Failed to load tasks"}
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            {isSetupError
+              ? "Setup incomplete. Nothing is lost - your tasks will appear once the service is ready."
+              : error}
+          </p>
           <button
             onClick={() => loadTasks()}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
           >
-            Try Again
+            Retry
           </button>
         </div>
       </div>
